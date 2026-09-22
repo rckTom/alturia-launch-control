@@ -1,0 +1,29 @@
+[project]
+name = "launch-controller"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Thomas Schmid", email = "tom@lfence.de" }
+]
+requires-python = ">=3.13"
+dependencies = []
+
+[project.scripts]
+launch-controller = "launch_controller:main"
+
+[build-system]
+requires = ["uv_build>=0.12.17,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+hardware = [
+    "easyeda2kicad>=1.0.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["hardware/satellite/tests"]
+pythonpath = ["hardware/satellite"]

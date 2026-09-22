@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "satellite")(type "KiCad")(uri "${KIPRJMOD}/library/satellite.pretty")(options "")(descr "LCSC parts via easyeda2kicad"))
+)

@@ -1,0 +1,928 @@
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
+
+#include "controller.h"
+#include "inputs.h"
+
+LOG_MODULE_REGISTER(controller, LOG_LEVEL_INF);
+
+#define LINK_TIMEOUT_MS     1500
+#define TX_PERIOD_MS        250
+#define ARM_ACK_TIMEOUT_MS  2000
+#define FIRE_ACK_TIMEOUT_MS 3000
+#define ARM_TIMEOUT_MS      (CONFIG_APP_ARM_TIMEOUT_S * 1000)
+#define LINK_STABLE_MS      2000  /* link needed this long before pads return */
+
+static struct ctrl_view v = {
+	.sat = {[0 ... NUM_SATS - 1] = {.ok_since = -1}},
+};
+
+static int64_t next_tx;
+static int64_t ack_deadline;   /* ARMING / FIRING acknowledgement */
+static int64_t arm_deadline;   /* inactivity timeout while ARMED */
+static int64_t fire_hold_start = -1;
+static bool fire_was_held;
+
+/* Per satellite, latched when arming: channels of the selected pads */
+static uint8_t arm_mask[NUM_SATS];
+static uint32_t cmd_seq[NUM_SATS];   /* status seq when the command was sent */
+static uint8_t fire_count[NUM_SATS]; /* status fire_count when FIRE was sent */
+
+const char *ctrl_state_name(enum ctrl_state state)
+{
+	switch (state) {
+	case CTRL_SAFE:
+		return "SAFE";
+	case CTRL_ARMING:
+		return "ARMING";
+	case CTRL_ARMED:
+		return "ARMED";
+	case CTRL_FIRING:
+		return "FIRING";
+	}
+	return "?";
+}
+
+static void message(enum msg_level level, const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	vsnprintf(v.message, sizeof(v.message), fmt, ap);
+	va_end(ap);
+	v.message_level = level;
+	v.message_time = k_uptime_get();
+
+	if (level != MSG_INFO) {
+		LOG_WRN("%s", v.message);
+	} else {
+		LOG_INF("%s", v.message);
+	}
+}
+
+static void set_state(enum ctrl_state s)
+{
+	if (s != v.state) {
+		LOG_INF("%s -> %s", ctrl_state_name(v.state), ctrl_state_name(s));
+		v.state = s;
+	}
+	fire_hold_start = -1;
+	v.fire_hold_ms = 0;
+}
+
+bool ctrl_pad_visible(int p)
+{
+	return pads[p].type != PAD_OFF && v.sat[pads[p].sat].visible;
+}
+
+static bool involved(int sat)
+{
+	return arm_mask[sat] != 0;
+}
+
+static bool pad_is_armed_hybrid(int p)
+{
+	return v.state != CTRL_SAFE && (v.selected & BIT(p)) && pads[p].type == PAD_HYBRID;
+}
+
+/* Valve outputs to energize on one satellite, from the hybrid pad ops */
+static uint8_t valves_for(int sat)
+{
+	uint8_t valves = 0;
+
+	for (int p = 0; p < NUM_PADS; p++) {
+		if (pads[p].sat != sat || !pad_is_armed_hybrid(p)) {
+			continue;
+		}
+		/* Vent is normally open: energized means closed */
+		if (v.pad[p].op != HYB_VENTING) {
+			valves |= BIT(pads[p].vent);
+		}
+		if (v.pad[p].op == HYB_FILLING) {
+			valves |= BIT(pads[p].fill);
+		}
+	}
+	return valves;
+}
+
+static void send(int sat, enum link_cmd_type type, uint8_t mask)
+{
+	struct link_cmd cmd = {
+		.type = type,
+		.mask = mask,
+		.valves = involved(sat) ? valves_for(sat) : 0,
+	};
+
+	link_send(sat, &cmd);
+}
+
+static void send_heartbeats(void)
+{
+	for (int sat = 0; sat < NUM_SATS; sat++) {
+		send(sat, CMD_HEARTBEAT, 0);
+	}
+	next_tx = k_uptime_get() + TX_PERIOD_MS;
+}
+
+static void set_all_ops(enum hybrid_op op)
+{
+	for (int p = 0; p < NUM_PADS; p++) {
+		v.pad[p].op = op;
+	}
+}
+
+/* Disarm everything. Hybrid vents open by themselves once unpowered. */
+static void disarm_all(void)
+{
+	for (int sat = 0; sat < NUM_SATS; sat++) {
+		send(sat, CMD_DISARM, 0);
+		arm_mask[sat] = 0;
+	}
+	set_all_ops(HYB_CLOSED);
+	set_state(CTRL_SAFE);
+}
+
+/* Disarm everything and show a fault that stays until SAFE is pressed */
+static void fault(const char *fmt, int sat)
+{
+	disarm_all();
+	message(MSG_FAULT, fmt, sat_name(sat));
+	v.fault_active = true;
+}
+
+static const char *pad_problem(int p)
+{
+	static const char *const names[3][2] = {
+		{"IGN OPEN", "IGN SHORT"},
+		{"FILL OPEN", "FILL SHORT"},
+		{"VENT OPEN", "VENT SHORT"},
+	};
+	const struct pad_cfg *cfg = &pads[p];
+	const struct sat_status *st = &v.sat[cfg->sat].st;
+	uint8_t chans[3] = {cfg->ign, cfg->fill, cfg->vent};
+	int n = cfg->type == PAD_HYBRID ? 3 : 1;
+
+	if (cfg->type == PAD_OFF || !v.sat[cfg->sat].have_status) {
+		return NULL;
+	}
+	for (int i = 0; i < n; i++) {
+		switch (st->cont[chans[i]]) {
+		case CONT_OPEN:
+			return names[i][0];
+		case CONT_SHORT:
+			return names[i][1];
+		default:
+			break;
+		}
+	}
+	return NULL;
+}
+
+static void selection_masks(uint8_t out[NUM_SATS])
+{
+	for (int sat = 0; sat < NUM_SATS; sat++) {
+		out[sat] = 0;
+	}
+	for (int p = 0; p < NUM_PADS; p++) {
+		if (v.selected & BIT(p)) {
+			out[pads[p].sat] |= pad_channels(&pads[p]);
+		}
+	}
+}
+
+static bool any_op(enum hybrid_op op);
+
+static const char *arm_block_reason(void)
+{
+	static char buf[48];
+	uint8_t masks[NUM_SATS];
+
+	if (v.selected == 0) {
+		return "Select pads with the knob";
+	}
+
+	selection_masks(masks);
+	for (int sat = 0; sat < NUM_SATS; sat++) {
+		const struct sat_view *s = &v.sat[sat];
+
+		if (!masks[sat]) {
+			continue;
+		}
+		if (!s->link_ok) {
+			snprintf(buf, sizeof(buf), "No link to satellite %c", sat_name(sat));
+			return buf;
+		}
+		if (s->st.estop) {
+			snprintf(buf, sizeof(buf), "Satellite %c: E-STOP pressed", sat_name(sat));
+			return buf;
+		}
+		if (!s->st.key_armed) {
+			snprintf(buf, sizeof(buf), "Satellite %c: pad key in SAFE", sat_name(sat));
+			return buf;
+		}
+	}
+
+	if (!v.key_on) {
+		return "Turn the controller key to arm";
+	}
+	return NULL;
+}
+
+/* Continuity is judged while armed, from the satellite's armed readings */
+static const char *launch_block_reason(void)
+{
+	static char buf[48];
+
+	for (int p = 0; p < NUM_PADS; p++) {
+		if ((v.selected & BIT(p)) && v.pad[p].problem) {
+			snprintf(buf, sizeof(buf), "%s: %s", pad_name(p), v.pad[p].problem);
+			return buf;
+		}
+	}
+	if (any_op(HYB_VENTING)) {
+		return "Close VENT before launch";
+	}
+	return NULL;
+}
+
+static bool fresh(int sat)
+{
+	/* seq is monotonic, so this rejects packets that were already in flight */
+	return (int32_t)(v.sat[sat].st.seq - cmd_seq[sat]) > 0;
+}
+
+static void toggle_pad(int p)
+{
+	if (p < 0 || p >= NUM_PADS) {
+		return;
+	}
+	if (v.state != CTRL_SAFE) {
+		message(MSG_WARN, "Pads are locked while armed");
+		return;
+	}
+	if (!ctrl_pad_visible(p)) {
+		message(MSG_WARN, "%s is not available", pad_name(p));
+		return;
+	}
+	v.selected ^= BIT(p);
+}
+
+static void request_arm(void)
+{
+	const char *block;
+
+	if (v.state != CTRL_SAFE) {
+		return;
+	}
+	block = arm_block_reason();
+	if (block != NULL) {
+		message(MSG_WARN, "Cannot arm: %s", block);
+		return;
+	}
+
+	selection_masks(arm_mask);
+	set_all_ops(HYB_CLOSED);
+	set_state(CTRL_ARMING);
+	for (int sat = 0; sat < NUM_SATS; sat++) {
+		if (involved(sat)) {
+			cmd_seq[sat] = v.sat[sat].st.seq;
+			send(sat, CMD_ARM, arm_mask[sat]);
+		}
+	}
+	next_tx = k_uptime_get() + TX_PERIOD_MS;
+	ack_deadline = k_uptime_get() + ARM_ACK_TIMEOUT_MS;
+	message(MSG_INFO, "Arming...");
+}
+
+static void request_safe(const char *why)
+{
+	if (v.state != CTRL_SAFE) {
+		disarm_all();
+		message(MSG_INFO, "Disarmed: %s", why);
+	}
+}
+
+static uint16_t armed_hybrids(void)
+{
+	uint16_t mask = 0;
+
+	for (int p = 0; p < NUM_PADS; p++) {
+		if (pad_is_armed_hybrid(p)) {
+			mask |= BIT(p);
+		}
+	}
+	return mask;
+}
+
+static bool any_op(enum hybrid_op op)
+{
+	for (int p = 0; p < NUM_PADS; p++) {
+		if (pad_is_armed_hybrid(p) && v.pad[p].op == op) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/* FILL and VENT act on all armed hybrid pads and toggle */
+static void request_valve(enum hybrid_op op)
+{
+	const char *name = op == HYB_FILLING ? "FILL" : "VENT";
+	uint16_t hybrids = armed_hybrids();
+	int64_t now = k_uptime_get();
+	char list[PADS_FORMAT_LEN];
+
+	if (v.state != CTRL_ARMED) {
+		message(MSG_WARN, "%s needs the pads armed", name);
+		return;
+	}
+	if (!hybrids) {
+		message(MSG_WARN, "%s: no hybrid pad armed", name);
+		return;
+	}
+
+	pads_format(list, sizeof(list), hybrids);
+	if (any_op(op)) {
+		set_all_ops(HYB_CLOSED);
+		message(MSG_INFO, "%s closed: %s", name, list);
+	} else {
+		if (op == HYB_VENTING && any_op(HYB_FILLING)) {
+			message(MSG_INFO, "Fill aborted, venting %s", list);
+		} else {
+			message(MSG_INFO, "%s %s", op == HYB_FILLING ? "Filling" : "Venting",
+				list);
+		}
+		for (int p = 0; p < NUM_PADS; p++) {
+			if (hybrids & BIT(p)) {
+				v.pad[p].op = op;
+				v.pad[p].fill_start = now;
+			}
+		}
+	}
+
+	arm_deadline = now + ARM_TIMEOUT_MS;
+	send_heartbeats(); /* carries the new valve state */
+}
+
+struct ctrl_req {
+	enum ctrl_req_type type;
+	int arg;
+};
+
+K_MSGQ_DEFINE(req_q, sizeof(struct ctrl_req), 16, 4);
+
+void ctrl_post(enum ctrl_req_type type, int arg)
+{
+	struct ctrl_req req = {.type = type, .arg = arg};
+
+	(void)k_msgq_put(&req_q, &req, K_NO_WAIT);
+}
+
+static bool field_visible(const struct pad_cfg *cfg, int field)
+{
+	switch (field) {
+	case FIELD_SAT:
+	case FIELD_IGN:
+		return cfg->type != PAD_OFF;
+	case FIELD_FILL:
+	case FIELD_VENT:
+		return cfg->type == PAD_HYBRID;
+	default:
+		return true;
+	}
+}
+
+/* Move the main list cursor by steps enabled pads, stopping at the ends */
+static void move_cursor(int steps)
+{
+	int dir = steps > 0 ? 1 : -1;
+
+	for (int n = abs(steps); n > 0; n--) {
+		int p = v.cursor + dir;
+
+		while (p >= 0 && p < NUM_PADS && !ctrl_pad_visible(p)) {
+			p += dir;
+		}
+		if (p < 0 || p >= NUM_PADS) {
+			break;
+		}
+		v.cursor = p;
+	}
+}
+
+/* Keep the cursor on a visible pad after pads came or went */
+static void fix_cursor(void)
+{
+	if (!ctrl_pad_visible(v.cursor)) {
+		move_cursor(-1);
+	}
+	if (!ctrl_pad_visible(v.cursor)) {
+		move_cursor(1);
+	}
+}
+
+static void setup_open(int pad)
+{
+	struct pad_setup *su = &v.setup;
+
+	*su = (struct pad_setup){
+		.active = true,
+		.mode = SETUP_FIELDS,
+		.pad = pad,
+		.field = FIELD_LABEL,
+		.cfg = pads[pad],
+	};
+	su->error = pads_check(su->pad, &su->cfg);
+}
+
+static void setup_save(void)
+{
+	struct pad_setup *su = &v.setup;
+
+	if (su->error) {
+		message(MSG_WARN, "Cannot save: %s", su->error);
+		return;
+	}
+	su->active = false;
+	if (su->cfg.type == PAD_OFF) {
+		v.selected &= ~BIT(su->pad);
+	}
+	if (pads_store(su->pad, &su->cfg)) {
+		message(MSG_WARN, "Pad %d applied, but could not be stored", su->pad + 1);
+	} else {
+		message(MSG_INFO, "Pad %d saved", su->pad + 1);
+	}
+}
+
+static int wrap(int value, int count)
+{
+	return ((value % count) + count) % count;
+}
+
+static void setup_turn(int steps)
+{
+	static const char charset[] = LABEL_CHARSET;
+	struct pad_setup *su = &v.setup;
+	struct pad_cfg *cfg = &su->cfg;
+
+	switch (su->mode) {
+	case SETUP_FIELDS: {
+		/* Step over hidden fields, stop at the ends */
+		int dir = steps > 0 ? 1 : -1;
+
+		for (int n = abs(steps); n > 0; n--) {
+			int f = su->field + dir;
+
+			while (f >= 0 && f < FIELD_COUNT && !field_visible(cfg, f)) {
+				f += dir;
+			}
+			if (f < 0 || f >= FIELD_COUNT) {
+				break;
+			}
+			su->field = f;
+		}
+		break;
+	}
+	case SETUP_VALUE:
+		switch (su->field) {
+		case FIELD_TYPE:
+			cfg->type = wrap(cfg->type + steps, PAD_TYPE_COUNT);
+			break;
+		case FIELD_SAT:
+			cfg->sat = wrap(cfg->sat + steps, NUM_SATS);
+			break;
+		case FIELD_IGN:
+			cfg->ign = wrap(cfg->ign + steps, NUM_CHANNELS);
+			break;
+		case FIELD_FILL:
+			cfg->fill = wrap(cfg->fill + steps, NUM_CHANNELS);
+			break;
+		case FIELD_VENT:
+			cfg->vent = wrap(cfg->vent + steps, NUM_CHANNELS);
+			break;
+		}
+		break;
+	case SETUP_LABEL: {
+		char *c = &su->label[su->pos];
+		const char *at = strchr(charset, *c);
+		int i = at ? at - charset : 0;
+
+		*c = charset[wrap(i + steps, sizeof(charset) - 1)];
+		break;
+	}
+	}
+}
+
+static void setup_push(void)
+{
+	struct pad_setup *su = &v.setup;
+
+	switch (su->mode) {
+	case SETUP_FIELDS:
+		su->undo = su->cfg;
+		if (su->field == FIELD_LABEL) {
+			snprintf(su->label, sizeof(su->label), "%-*s", PAD_LABEL_MAX,
+				 su->cfg.label);
+			su->pos = 0;
+			su->mode = SETUP_LABEL;
+		} else {
+			su->mode = SETUP_VALUE;
+		}
+		break;
+	case SETUP_VALUE:
+		su->mode = SETUP_FIELDS;
+		break;
+	case SETUP_LABEL:
+		su->pos = (su->pos + 1) % PAD_LABEL_MAX;
+		break;
+	}
+}
+
+static void setup_label_done(void)
+{
+	struct pad_setup *su = &v.setup;
+	size_t len = PAD_LABEL_MAX;
+
+	while (len > 0 && su->label[len - 1] == ' ') {
+		len--;
+	}
+	memcpy(su->cfg.label, su->label, len);
+	su->cfg.label[len] = '\0';
+	su->mode = SETUP_FIELDS;
+}
+
+/* While the setup screen is open it consumes every request */
+static void setup_handle(const struct ctrl_req *req)
+{
+	struct pad_setup *su = &v.setup;
+
+	switch (req->type) {
+	case CTRL_REQ_CURSOR:
+		setup_turn(req->arg);
+		break;
+	case CTRL_REQ_SELECT:
+		setup_push();
+		break;
+	case CTRL_REQ_EDIT:
+		/* Hold: finish the label, or save the whole pad */
+		if (su->mode == SETUP_LABEL) {
+			setup_label_done();
+		} else {
+			setup_save();
+		}
+		break;
+	case CTRL_REQ_SAFE:
+		/* SAFE backs out one level: field edit, then the whole screen */
+		if (su->mode == SETUP_FIELDS) {
+			su->active = false;
+			message(MSG_INFO, "Pad %d setup cancelled", su->pad + 1);
+		} else {
+			su->cfg = su->undo;
+			su->mode = SETUP_FIELDS;
+		}
+		break;
+	default:
+		message(MSG_WARN, "Finish the pad setup first (hold to save, SAFE to cancel)");
+		break;
+	}
+
+	if (su->active) {
+		su->error = pads_check(su->pad, &su->cfg);
+	}
+}
+
+static void settings_open(void)
+{
+	if (v.state != CTRL_SAFE) {
+		message(MSG_WARN, "Settings are only available in SAFE");
+		return;
+	}
+	v.settings.active = true;
+	v.settings.cursor = v.cursor;
+}
+
+static void settings_close(void)
+{
+	v.settings.active = false;
+	fix_cursor();
+}
+
+/* While the settings screen is open it consumes every request */
+static void settings_handle(const struct ctrl_req *req)
+{
+	switch (req->type) {
+	case CTRL_REQ_CURSOR:
+		v.settings.cursor = CLAMP(v.settings.cursor + req->arg, 0, NUM_PADS - 1);
+		break;
+	case CTRL_REQ_SELECT:
+		setup_open(v.settings.cursor);
+		break;
+	case CTRL_REQ_EDIT:
+	case CTRL_REQ_SAFE:
+		settings_close();
+		break;
+	default:
+		message(MSG_WARN, "Leave the settings first (SAFE)");
+		break;
+	}
+}
+
+static void drain_requests(void)
+{
+	struct ctrl_req req;
+
+	while (k_msgq_get(&req_q, &req, K_NO_WAIT) == 0) {
+		if (v.fault_active) {
+			if (req.type == CTRL_REQ_SAFE) {
+				v.fault_active = false;
+				message(MSG_INFO, "Fault acknowledged");
+			}
+			continue;
+		}
+		if (v.setup.active) {
+			setup_handle(&req);
+			continue;
+		}
+		if (v.settings.active) {
+			settings_handle(&req);
+			continue;
+		}
+		switch (req.type) {
+		case CTRL_REQ_TOGGLE_PAD:
+			toggle_pad(req.arg);
+			break;
+		case CTRL_REQ_CURSOR:
+			if (v.state == CTRL_ARMED) {
+				int max = __builtin_popcount(v.selected) - ARMED_TABLE_ROWS;
+
+				v.table_scroll = CLAMP(v.table_scroll + req.arg, 0, MAX(max, 0));
+			} else {
+				move_cursor(req.arg);
+			}
+			break;
+		case CTRL_REQ_SELECT:
+			toggle_pad(v.cursor);
+			break;
+		case CTRL_REQ_EDIT:
+			settings_open();
+			break;
+		case CTRL_REQ_ARM:
+			request_arm();
+			break;
+		case CTRL_REQ_SAFE:
+			request_safe("SAFE button");
+			break;
+		case CTRL_REQ_FILL:
+			request_valve(HYB_FILLING);
+			break;
+		case CTRL_REQ_VENT:
+			request_valve(HYB_VENTING);
+			break;
+		}
+	}
+}
+
+static void tick_arming(int64_t now)
+{
+	bool all_armed = true;
+
+	if (!v.key_on) {
+		request_safe("controller key turned off");
+		return;
+	}
+
+	for (int sat = 0; sat < NUM_SATS; sat++) {
+		uint8_t refused = v.sat[sat].st.arm_refused;
+
+		if (involved(sat) && fresh(sat) && refused) {
+			int ch = __builtin_ctz(refused) + 1;
+
+			disarm_all();
+			message(MSG_FAULT, "Satellite %c refused ARM: CH%d output shorted",
+				sat_name(sat), ch);
+			v.fault_active = true;
+			return;
+		}
+		if (involved(sat) && !(fresh(sat) && v.sat[sat].st.state == SAT_ARMED)) {
+			all_armed = false;
+			if (now >= ack_deadline) {
+				fault("Satellite %c did not acknowledge ARM", sat);
+				return;
+			}
+		}
+	}
+
+	if (all_armed) {
+		arm_deadline = now + ARM_TIMEOUT_MS;
+		v.table_scroll = 0;
+		set_state(CTRL_ARMED);
+		message(MSG_INFO, "ARMED");
+	}
+}
+
+static void start_fire(int64_t now)
+{
+	char list[PADS_FORMAT_LEN];
+
+	/* LAUNCH stops a running fill; vents stay closed during the pulse */
+	set_all_ops(HYB_CLOSED);
+
+	for (int sat = 0; sat < NUM_SATS; sat++) {
+		uint8_t ign = 0;
+
+		if (!involved(sat)) {
+			continue;
+		}
+		for (int p = 0; p < NUM_PADS; p++) {
+			if ((v.selected & BIT(p)) && pads[p].sat == sat) {
+				ign |= BIT(pads[p].ign);
+			}
+		}
+		fire_count[sat] = v.sat[sat].st.fire_count;
+		cmd_seq[sat] = v.sat[sat].st.seq;
+		/* Sent once on purpose: a retry could fire twice. */
+		send(sat, CMD_FIRE, ign);
+	}
+
+	ack_deadline = now + FIRE_ACK_TIMEOUT_MS;
+	set_state(CTRL_FIRING);
+	pads_format(list, sizeof(list), v.selected);
+	message(MSG_INFO, "LAUNCH %s", list);
+}
+
+static void tick_armed(int64_t now)
+{
+	bool fire_held = inputs_fire_held();
+
+	for (int sat = 0; sat < NUM_SATS; sat++) {
+		if (!involved(sat)) {
+			continue;
+		}
+		if (!v.sat[sat].link_ok) {
+			fault("Link to satellite %c lost while armed", sat);
+			return;
+		}
+		if (v.sat[sat].st.state == SAT_SAFE) {
+			fault("Satellite %c dropped arm (pad key, E-STOP or heartbeat)", sat);
+			return;
+		}
+	}
+	if (!v.key_on) {
+		request_safe("controller key turned off");
+		return;
+	}
+
+	/* A fill can take minutes; timing out would vent the tank */
+	v.arm_timer_paused = any_op(HYB_FILLING);
+	if (v.arm_timer_paused) {
+		arm_deadline = now + ARM_TIMEOUT_MS;
+	}
+	if (now >= arm_deadline) {
+		request_safe("arm timeout");
+		return;
+	}
+	v.arm_remaining_ms = (int32_t)(arm_deadline - now);
+
+	v.launch_block = launch_block_reason();
+	if (fire_held && !fire_was_held && v.launch_block) {
+		message(MSG_WARN, "Cannot launch: %s", v.launch_block);
+	}
+	fire_was_held = fire_held;
+
+	if (!fire_held || v.launch_block) {
+		fire_hold_start = -1;
+		v.fire_hold_ms = 0;
+		return;
+	}
+	if (fire_hold_start < 0) {
+		fire_hold_start = now;
+	}
+	v.fire_hold_ms = (int32_t)(now - fire_hold_start);
+	if (v.fire_hold_ms >= CONFIG_APP_FIRE_HOLD_MS) {
+		start_fire(now);
+	}
+}
+
+static void tick_firing(int64_t now)
+{
+	bool done = true;
+	char list[PADS_FORMAT_LEN];
+
+	for (int sat = 0; sat < NUM_SATS; sat++) {
+		const struct sat_status *st = &v.sat[sat].st;
+
+		if (!involved(sat)) {
+			continue;
+		}
+		if (!fresh(sat) || st->fire_count == fire_count[sat] ||
+		    st->state == SAT_FIRING) {
+			done = false;
+			if (now >= ack_deadline) {
+				fault("Satellite %c did not confirm FIRE", sat);
+				return;
+			}
+		}
+	}
+
+	if (done) {
+		pads_format(list, sizeof(list), v.selected);
+		disarm_all();
+		message(MSG_INFO, "Launched %s, disarmed", list);
+	}
+}
+
+void ctrl_tick(void)
+{
+	int64_t now = k_uptime_get();
+
+	for (int sat = 0; sat < NUM_SATS; sat++) {
+		struct sat_view *s = &v.sat[sat];
+		int64_t rx = link_last_status(sat, &s->st);
+
+		s->have_status = rx >= 0;
+		s->link_ok = s->have_status && now - rx < LINK_TIMEOUT_MS;
+
+		if (!s->link_ok) {
+			s->ok_since = -1;
+			if (s->visible) {
+				s->visible = false;
+				message(MSG_WARN, "Satellite %c disconnected", sat_name(sat));
+			}
+		} else if (s->ok_since < 0) {
+			s->ok_since = now;
+		} else if (!s->visible && now - s->ok_since >= LINK_STABLE_MS) {
+			s->visible = true;
+			message(MSG_INFO, "Satellite %c connected", sat_name(sat));
+		}
+	}
+
+	/*
+	 * Pads of a lost satellite leave the selection, so they come back
+	 * unselected. While armed, losing a satellite is a fault instead.
+	 */
+	if (v.state == CTRL_SAFE) {
+		for (int p = 0; p < NUM_PADS; p++) {
+			if (!ctrl_pad_visible(p)) {
+				v.selected &= ~BIT(p);
+			}
+		}
+	}
+	for (int p = 0; p < NUM_PADS; p++) {
+		v.pad[p].problem = pad_problem(p);
+	}
+	v.key_on = inputs_key_on();
+	if (!v.settings.active) {
+		fix_cursor();
+	}
+
+	drain_requests();
+
+	switch (v.state) {
+	case CTRL_SAFE:
+		break;
+	case CTRL_ARMING:
+		tick_arming(now);
+		break;
+	case CTRL_ARMED:
+		tick_armed(now);
+		break;
+	case CTRL_FIRING:
+		tick_firing(now);
+		break;
+	}
+
+	v.arm_block = v.state == CTRL_SAFE ? arm_block_reason() : NULL;
+	if (v.state != CTRL_ARMED) {
+		v.launch_block = NULL;
+	}
+	if (v.state != CTRL_ARMED) {
+		v.arm_remaining_ms = 0;
+		v.arm_timer_paused = false;
+	}
+
+	if (now >= next_tx) {
+		for (int sat = 0; sat < NUM_SATS; sat++) {
+			if (v.state == CTRL_ARMING && involved(sat)) {
+				/* ARM is idempotent on the satellite, so resending is safe */
+				send(sat, CMD_ARM, arm_mask[sat]);
+			} else if (!involved(sat) && v.sat[sat].have_status &&
+				   v.sat[sat].st.state != SAT_SAFE) {
+				/* We think it is safe: make sure the satellite agrees */
+				send(sat, CMD_DISARM, 0);
+			} else {
+				send(sat, CMD_HEARTBEAT, 0);
+			}
+		}
+		next_tx = now + TX_PERIOD_MS;
+	}
+}
+
+const struct ctrl_view *ctrl_view(void)
+{
+	return &v;
+}

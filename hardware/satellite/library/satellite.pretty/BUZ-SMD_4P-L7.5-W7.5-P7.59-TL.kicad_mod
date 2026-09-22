@@ -1,0 +1,230 @@
+(footprint "BUZ-SMD_4P-L7.5-W7.5-P7.59-TL"
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(layer "F.Cu")
+	(property "Reference" "REF**"
+		(at 0 -7.15 0)
+		(layer "F.SilkS")
+		(uuid "7c23e941-4713-4680-bbbd-21c9016e3965")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "BUZ-SMD_4P-L7.5-W7.5-P7.59-TL"
+		(at 0 7.15 0)
+		(layer "F.Fab")
+		(uuid "38ec69c1-b271-407d-8916-28447e56f80e")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "17daf9e4-9595-4e35-9a1f-d86f8dcddc7c")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "70b16037-8802-4686-bae3-fb2f7e4a79c3")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "LCSC Part" "C95299"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "5471b35e-56d9-4c7d-a49a-c0af2ea9ae90")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(attr smd)
+	(duplicate_pad_numbers_are_jumpers no)
+	(fp_line
+		(start -3.81 -4.19)
+		(end 3.84 -4.19)
+		(stroke
+			(width 0.15)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "4f2a16bd-bace-4e8f-a9a0-38bcb17ece22")
+	)
+	(fp_line
+		(start -3.81 4.19)
+		(end 3.84 4.19)
+		(stroke
+			(width 0.15)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "c0bf4511-d8be-4994-8494-9bbc62f4a531")
+	)
+	(fp_circle
+		(center -4.95 -3.43)
+		(end -4.7 -3.43)
+		(stroke
+			(width 0.5)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.SilkS")
+		(uuid "70fa013f-f868-4f8f-9a0b-97c9f5b7c6df")
+	)
+	(fp_circle
+		(center -3.75 -3.75)
+		(end -3.72 -3.75)
+		(stroke
+			(width 0.06)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.SilkS")
+		(uuid "1562dc84-6654-4158-b922-5b57836aedb0")
+	)
+	(fp_poly
+		(pts
+			(xy 2.793873 0.889025) (xy 2.793873 -0.888975) (xy 3.682873 0.000025) (xy 2.793873 0.889025)
+		)
+		(stroke
+			(width 0)
+			(type solid)
+		)
+		(fill yes)
+		(layer "F.SilkS")
+		(uuid "d09557f9-ec7a-4d43-bc96-29f1f214fa8c")
+	)
+	(fp_poly
+		(pts
+			(xy -2.540127 -2.793975) (xy -0.762127 -2.793975) (xy -0.762127 -2.285975) (xy -2.540127 -2.285975)
+			(xy -2.540127 -2.793975)
+		)
+		(stroke
+			(width 0)
+			(type solid)
+		)
+		(fill yes)
+		(layer "F.SilkS")
+		(uuid "dfb1f597-4f01-4670-b840-3936319ddfde")
+	)
+	(fp_poly
+		(pts
+			(xy -1.905127 -1.650975) (xy -1.905102 -3.428975) (xy -1.397127 -3.428975) (xy -1.397127 -1.650975)
+			(xy -1.905127 -1.650975)
+		)
+		(stroke
+			(width 0)
+			(type solid)
+		)
+		(fill yes)
+		(layer "F.SilkS")
+		(uuid "4a7d1190-3182-4e78-9419-62045afb6de0")
+	)
+	(fp_line
+		(start -3.75 -3.75)
+		(end 3.75 -3.75)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "0462154d-b07c-413e-a476-39ae4e4c1c96")
+	)
+	(fp_line
+		(start -3.75 3.75)
+		(end -3.75 -3.75)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "8bdbf6b0-3fb0-4521-a7d4-55517830d48a")
+	)
+	(fp_line
+		(start 3.75 -3.75)
+		(end 3.75 3.75)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "ce0f0d21-97d0-415f-bc32-808b70730f3d")
+	)
+	(fp_line
+		(start 3.75 3.75)
+		(end -3.75 3.75)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "b6a678b9-b818-4cad-a833-61d20cfdc228")
+	)
+	(fp_text user "${REFERENCE}"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(uuid "215eb265-d07c-4e97-a694-b3dcf7be0637")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(pad "1" smd rect
+		(at -3.5 -3.15 180)
+		(size 1.681 1.68)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "7e6138bb-d959-49d3-a0b1-940ab2bf6568")
+	)
+	(pad "2" smd rect
+		(at -3.5 3.15 180)
+		(size 1.681 1.68)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "8c290a69-ff8a-419b-b852-04e8b161bc71")
+	)
+	(pad "3" smd rect
+		(at 3.5 3.15 180)
+		(size 1.681 1.68)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "c50dfb23-b0a0-4621-a71f-8ac080cc8bb8")
+	)
+	(pad "4" smd rect
+		(at 3.5 -3.15 180)
+		(size 1.681 1.68)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "ac58c0a0-3788-4958-8466-74818f658941")
+	)
+	(embedded_fonts no)
+	(model "/home/thomas/Projects/rocketry/launch_controller/hardware/satellite/library/satellite.3dshapes/BUZ-SMD_4P-L7.5-W7.5-H2.5.wrl"
+		(offset
+			(xyz 0 0 0)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz 0 0 90)
+		)
+	)
+)

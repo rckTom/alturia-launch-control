@@ -1,0 +1,2 @@
+/* 64-bit native_sim uses the same setup; avoids needing 32-bit SDL2. */
+#include "native_sim.overlay"

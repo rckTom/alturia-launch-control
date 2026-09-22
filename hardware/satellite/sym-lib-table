@@ -1,0 +1,4 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "satellite")(type "KiCad")(uri "${KIPRJMOD}/library/satellite.kicad_sym")(options "")(descr "LCSC parts via easyeda2kicad"))
+)

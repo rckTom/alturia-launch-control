@@ -1,0 +1,169 @@
+(footprint "IND-SMD_L4.0-W4.0_FNR40XXS"
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(layer "F.Cu")
+	(property "Reference" "REF**"
+		(at 0 -4 0)
+		(layer "F.SilkS")
+		(uuid "b6ea855f-f99f-4006-bb17-99bea53c21ea")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "IND-SMD_L4.0-W4.0_FNR40XXS"
+		(at 0 4 0)
+		(layer "F.Fab")
+		(uuid "df2e05d6-7c1e-4c99-a843-291b21b55194")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "f5b5f633-73c1-48d7-a3e1-813ce23e2cd9")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "afbb1737-32f6-4153-afb9-1d6614bbe694")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "LCSC Part" "C167874"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "c32852e4-fe7d-4a89-a2dd-f6277327cf2d")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(attr smd)
+	(duplicate_pad_numbers_are_jumpers no)
+	(fp_line
+		(start -2 -2.1)
+		(end 2 -2.1)
+		(stroke
+			(width 0.2)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "617058e7-f4aa-437e-ba31-8627eefeb643")
+	)
+	(fp_line
+		(start -2 2.1)
+		(end 2 2.1)
+		(stroke
+			(width 0.2)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "4e2fc28a-954f-4cc0-b411-c464d7f04c19")
+	)
+	(fp_circle
+		(center -2 2)
+		(end -1.97 2)
+		(stroke
+			(width 0.06)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.SilkS")
+		(uuid "74909143-0213-4d71-929d-26157271454b")
+	)
+	(fp_line
+		(start -2 -2)
+		(end 2 -2)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "66c4cc45-7d7b-4023-b687-e277641082bd")
+	)
+	(fp_line
+		(start -2 2)
+		(end -2 -2)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "35f04f40-0899-45a8-ad16-4835c6e70cf0")
+	)
+	(fp_line
+		(start 2 -2)
+		(end 2 2)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "9fd4716e-b8b2-491c-aac2-08306d5f83bf")
+	)
+	(fp_line
+		(start 2 2)
+		(end -2 2)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "c0b8475b-a7ca-422f-9ac6-e7278dcb2be0")
+	)
+	(fp_text user "${REFERENCE}"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(uuid "0503b715-30ee-4f82-a8c1-e3e815eb3e6a")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(pad "1" smd rect
+		(at -1.5 0)
+		(size 1.6 3.9)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "a10a2647-de0a-4f21-a09c-6daabad09b59")
+	)
+	(pad "2" smd rect
+		(at 1.5 0)
+		(size 1.6 3.9)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "ef5f7526-60ed-44ac-9f43-631f5a12c065")
+	)
+	(embedded_fonts no)
+	(model "/home/thomas/Projects/rocketry/launch_controller/hardware/satellite/library/satellite.3dshapes/IND-SMD_L4.0-W4.0-H2.6_FNR40XXS.wrl"
+		(offset
+			(xyz 0 0 0)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz 0 0 90)
+		)
+	)
+)

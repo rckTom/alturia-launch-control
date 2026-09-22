@@ -1,0 +1,24 @@
+mainmenu "Launch controller UI"
+
+config APP_SAT_SIM
+	bool "Simulated satellites and LoRa link"
+	default y
+	help
+	  Replace the LoRa link with an in-process satellite simulator.
+	  Fault injection is available through the "sat" shell command.
+
+config APP_ARM_TIMEOUT_S
+	int "Arm timeout in seconds"
+	default 60
+	help
+	  Operator inactivity after which the controller disarms. FILL and
+	  VENT restart it, and it is paused while a hybrid pad is filling.
+
+config APP_FIRE_HOLD_MS
+	int "Fire button hold time in milliseconds"
+	default 1000
+	help
+	  The fire control must be held continuously for this long
+	  before the fire command is sent.
+
+source "Kconfig.zephyr"
