@@ -14,7 +14,7 @@
  *  | next step, or why arming is blocked            |
  *  +------------------------------------------------+
  *
- * Armed view (ARMED, FIRING): whole screen inverted. The arm timeout and a
+ * Armed view (ARMED): whole screen inverted. The arm timeout and a
  * continuity table of the armed pads (problems inverted again), valve
  * state of hybrid pads and the fire hold progress:
  *
@@ -28,6 +28,13 @@
  *
  * Continuity is only shown here: the satellite reads it from the armed
  * rail. Before arming it only runs its own shorted-output check.
+ *
+ * Launch view (FIRING): the same inverted screen, showing the pads being
+ * fired and a rocket leaving the pad. Hold-down while the exhaust builds,
+ * then a constant-acceleration climb off the top of the screen, with the
+ * smoke rolling out along the ground and hanging there. It is paced to
+ * the second or so the satellites take to confirm the fire pulse; what is
+ * left of it when the state ends is simply cut off.
  *
  * Fault view: one sentence in a heavy frame, until SAFE acknowledges it.
  *
@@ -84,13 +91,53 @@ static lv_obj_t *armed_title;
 static lv_obj_t *armed_warn_box;
 static lv_obj_t *armed_warn;
 static lv_obj_t *armed_timer;
-static lv_obj_t *armed_big;
 static lv_obj_t *armed_table;
 static lv_obj_t *table_box[ARMED_TABLE_ROWS][TCOL_COUNT];
 static lv_obj_t *table_text[ARMED_TABLE_ROWS][TCOL_COUNT];
 static lv_obj_t *table_summary;
 static lv_obj_t *armed_hint;
 static lv_obj_t *fire_bar;
+
+/*
+ * Launch view. The rocket is a stack of rows in its own container, so the
+ * whole thing is flown by moving the container; only the exhaust and the
+ * smoke are recomputed per frame. Everything is white on black, which on
+ * this panel is the only way to draw a night launch.
+ */
+#define GROUND_Y    206   /* the ground line */
+#define LAUNCH_X    200   /* centre of the pad */
+#define MOUNT_H     6     /* the rocket stands this far above the ground */
+#define TOWER_H     120
+
+#define ROCKET_W    22    /* body, without the fins */
+#define ROCKET_H    94    /* nose tip to nozzle exit */
+#define ROCKET_BOX  48    /* body plus both fins */
+#define ROCKET_MID  (ROCKET_BOX / 2)
+#define NOSE_ROWS   13
+#define NOSE_ROW_H  2
+#define NOSE_H      (NOSE_ROWS * NOSE_ROW_H)
+#define NOZZLE_ROWS 3
+#define NOZZLE_H    (NOZZLE_ROWS * NOSE_ROW_H)
+#define FIN_TOP     58
+#define FIN_ROWS    10
+#define FIN_ROW_H   3
+#define FLAME_SEGS  8
+#define FLAME_SEG_H 6
+#define FLAME_W     16
+#define SMOKE_PUFFS 12
+
+#define IGNITION_MS   350   /* held down while the exhaust builds */
+#define LIFTOFF_ACC   800   /* px/s^2, off the top of the screen in ~0.8 s */
+#define SMOKE_STOP_MS 2000  /* after this the cloud just hangs there */
+#define PUFF_STEP_MS  30    /* one more puff every */
+
+static lv_obj_t *launch_view;
+static lv_obj_t *launch_pads;
+static lv_obj_t *rocket;
+static lv_obj_t *flame[FLAME_SEGS];
+static lv_obj_t *smoke[SMOKE_PUFFS];
+static int64_t launch_start = -1;
+static uint32_t launch_frame;
 
 /* Fault view */
 static lv_obj_t *fault_view;
@@ -158,6 +205,15 @@ static lv_obj_t *make_box(lv_obj_t *parent, int32_t x, int32_t y, int32_t w, int
 	return box;
 }
 
+/* Lit part of an inverted view: white on the black background */
+static lv_obj_t *make_lit_box(lv_obj_t *parent, int32_t x, int32_t y, int32_t w, int32_t h)
+{
+	lv_obj_t *box = make_box(parent, x, y, w, h);
+
+	lv_obj_set_style_bg_color(box, lv_color_white(), 0);
+	return box;
+}
+
 static void make_rule(lv_obj_t *parent, int32_t y)
 {
 	lv_obj_t *rule = make_box(parent, 6, y, W - 12, 1);
@@ -173,7 +229,8 @@ static void set_inverted(lv_obj_t *obj, bool inverted)
 
 static void show_only(lv_obj_t *view)
 {
-	lv_obj_t *views[] = {list_view, armed_view, fault_view, settings_view, setup_view};
+	lv_obj_t *views[] = {list_view, armed_view, launch_view, fault_view, settings_view,
+			     setup_view};
 
 	ARRAY_FOR_EACH(views, i) {
 		if (views[i] == view) {
@@ -250,13 +307,6 @@ static void create_armed_view(lv_obj_t *scr)
 	armed_warn = make_label(armed_warn_box, &lv_font_montserrat_14);
 	lv_obj_center(armed_warn);
 
-	/* Only while firing, in place of the table */
-	armed_big = make_label(armed_view, &lv_font_montserrat_48);
-	lv_obj_set_width(armed_big, W - 16);
-	lv_obj_set_style_text_align(armed_big, LV_TEXT_ALIGN_CENTER, 0);
-	lv_label_set_long_mode(armed_big, LV_LABEL_LONG_MODE_DOTS);
-	lv_obj_align(armed_big, LV_ALIGN_TOP_MID, 0, 70);
-
 	/* Continuity table: header plus one row per armed pad */
 	armed_table = make_box(armed_view, 0, TABLE_Y0, W, (ARMED_TABLE_ROWS + 2) * TABLE_H);
 	set_inverted(armed_table, true);
@@ -295,6 +345,68 @@ static void create_armed_view(lv_obj_t *scr)
 	lv_obj_set_style_border_width(fire_bar, 1, LV_PART_MAIN);
 	lv_obj_set_style_border_color(fire_bar, lv_color_white(), LV_PART_MAIN);
 	lv_obj_set_style_bg_color(fire_bar, lv_color_white(), LV_PART_INDICATOR);
+}
+
+static void create_launch_view(lv_obj_t *scr)
+{
+	/* Widths of the rows the silhouette is stacked from */
+	static const uint8_t nose_w[NOSE_ROWS] = {6, 9, 11, 12, 14, 15, 16, 17, 18, 19,
+						  20, 21, 22};
+	static const uint8_t nozzle_w[NOZZLE_ROWS] = {12, 14, 16};
+	static const uint8_t fin_w[FIN_ROWS] = {1, 2, 4, 5, 7, 8, 10, 11, 12, 13};
+	lv_obj_t *title;
+
+	launch_view = make_box(scr, 0, 0, W, H);
+	set_inverted(launch_view, true);
+
+	title = make_label(launch_view, &lv_font_montserrat_24);
+	lv_label_set_text(title, "FIRING");
+	lv_obj_set_pos(title, 8, 4);
+
+	launch_pads = make_label(launch_view, &lv_font_montserrat_16);
+	lv_obj_set_width(launch_pads, 240);
+	lv_obj_set_style_text_align(launch_pads, LV_TEXT_ALIGN_RIGHT, 0);
+	lv_label_set_long_mode(launch_pads, LV_LABEL_LONG_MODE_DOTS);
+	lv_obj_align(launch_pads, LV_ALIGN_TOP_RIGHT, -8, 12);
+
+	/* Ground, launch mount and service tower: created first, so the
+	 * rocket and its smoke are drawn over them.
+	 */
+	make_lit_box(launch_view, 0, GROUND_Y, W, 2);
+	make_lit_box(launch_view, LAUNCH_X - 15, GROUND_Y - MOUNT_H, 30, MOUNT_H);
+	make_lit_box(launch_view, LAUNCH_X - 46, GROUND_Y - TOWER_H, 6, TOWER_H);
+	for (int i = 0; i < 3; i++) {
+		make_lit_box(launch_view, LAUNCH_X - 40, GROUND_Y - 30 - i * 30, 18, 3);
+	}
+
+	rocket = make_box(launch_view, 0, 0, ROCKET_BOX, ROCKET_H + FLAME_SEGS * FLAME_SEG_H);
+	lv_obj_set_style_bg_opa(rocket, LV_OPA_TRANSP, 0);
+
+	for (int i = 0; i < NOSE_ROWS; i++) {
+		make_lit_box(rocket, ROCKET_MID - nose_w[i] / 2, i * NOSE_ROW_H, nose_w[i],
+			     NOSE_ROW_H);
+	}
+	make_lit_box(rocket, ROCKET_MID - ROCKET_W / 2, NOSE_H, ROCKET_W,
+		     ROCKET_H - NOZZLE_H - NOSE_H);
+	for (int i = 0; i < NOZZLE_ROWS; i++) {
+		make_lit_box(rocket, ROCKET_MID - nozzle_w[i] / 2,
+			     ROCKET_H - NOZZLE_H + i * NOSE_ROW_H, nozzle_w[i], NOSE_ROW_H);
+	}
+	for (int i = 0; i < FIN_ROWS; i++) {
+		int32_t y = FIN_TOP + i * FIN_ROW_H;
+
+		make_lit_box(rocket, ROCKET_MID - ROCKET_W / 2 - fin_w[i], y, fin_w[i], FIN_ROW_H);
+		make_lit_box(rocket, ROCKET_MID + ROCKET_W / 2, y, fin_w[i], FIN_ROW_H);
+	}
+	for (int i = 0; i < FLAME_SEGS; i++) {
+		flame[i] = make_lit_box(rocket, ROCKET_MID, ROCKET_H + i * FLAME_SEG_H, 2,
+					FLAME_SEG_H);
+	}
+
+	for (int i = 0; i < SMOKE_PUFFS; i++) {
+		smoke[i] = make_lit_box(launch_view, 0, 0, 10, 10);
+		lv_obj_set_style_radius(smoke[i], LV_RADIUS_CIRCLE, 0);
+	}
 }
 
 static void create_fault_view(lv_obj_t *scr)
@@ -411,6 +523,7 @@ void ui_init(void)
 
 	create_list_view(scr);
 	create_armed_view(scr);
+	create_launch_view(scr);
 	create_fault_view(scr);
 	create_settings_view(scr);
 	create_setup_view(scr);
@@ -551,27 +664,8 @@ static void refresh_table_row(const struct ctrl_view *v, int row, int p, int64_t
 static void refresh_armed_view(const struct ctrl_view *v, int64_t now)
 {
 	bool hybrid = false;
-	char pads_buf[PADS_FORMAT_LEN];
 	int row = 0;
 
-	if (v->state == CTRL_FIRING) {
-		/* Flash the whole screen */
-		pads_format(pads_buf, sizeof(pads_buf), v->selected);
-		set_inverted(armed_view, (now / 250) % 2);
-		lv_label_set_text(armed_title, "FIRING");
-		lv_label_set_text(armed_timer, "");
-		lv_obj_add_flag(armed_warn_box, LV_OBJ_FLAG_HIDDEN);
-		lv_label_set_text(armed_big, pads_buf);
-		lv_obj_remove_flag(armed_big, LV_OBJ_FLAG_HIDDEN);
-		lv_obj_add_flag(armed_table, LV_OBJ_FLAG_HIDDEN);
-		lv_label_set_text(armed_hint, "");
-		lv_obj_add_flag(fire_bar, LV_OBJ_FLAG_HIDDEN);
-		return;
-	}
-
-	set_inverted(armed_view, true);
-	lv_obj_add_flag(armed_big, LV_OBJ_FLAG_HIDDEN);
-	lv_obj_remove_flag(armed_table, LV_OBJ_FLAG_HIDDEN);
 	lv_label_set_text(armed_title, "ARMED");
 
 	int32_t s = (v->arm_remaining_ms + 999) / 1000;
@@ -649,6 +743,88 @@ static void refresh_armed_view(const struct ctrl_view *v, int64_t now)
 	}
 	lv_obj_remove_flag(fire_bar, LV_OBJ_FLAG_HIDDEN);
 	lv_bar_set_value(fire_bar, v->fire_hold_ms, LV_ANIM_OFF);
+}
+
+/* Deterministic noise, so the flame and the smoke are not regular */
+static uint32_t jitter(uint32_t n)
+{
+	n = (n ^ 61) ^ (n >> 16);
+	n *= 9;
+	n ^= n >> 4;
+	n *= 0x27d4eb2d;
+	return n ^ (n >> 15);
+}
+
+static void refresh_launch_view(const struct ctrl_view *v, int64_t now)
+{
+	uint32_t frame = launch_frame++;
+	char buf[PADS_FORMAT_LEN];
+	int32_t ts, x, y, lit;
+
+	if (launch_start < 0) {
+		launch_start = now;
+	}
+	ts = (int32_t)(now - launch_start);
+
+	pads_format(buf, sizeof(buf), v->selected);
+	lv_label_set_text(launch_pads, buf);
+
+	if (ts < IGNITION_MS) {
+		/* Held down: the exhaust builds and the stack shakes */
+		x = LAUNCH_X - ROCKET_MID + (int32_t)(jitter(frame) % 3) - 1;
+		y = GROUND_Y - MOUNT_H - ROCKET_H;
+		lit = 1 + FLAME_SEGS * ts / IGNITION_MS;
+	} else {
+		int32_t dt = ts - IGNITION_MS;   /* ms since release */
+
+		/* h = a t^2 / 2, in two steps so it stays in 32 bits */
+		x = LAUNCH_X - ROCKET_MID;
+		y = GROUND_Y - MOUNT_H - ROCKET_H - LIFTOFF_ACC * dt / 1000 * dt / 2000;
+		lit = FLAME_SEGS;
+	}
+
+	if (y + ROCKET_H + FLAME_SEGS * FLAME_SEG_H < 0) {
+		lv_obj_add_flag(rocket, LV_OBJ_FLAG_HIDDEN);
+	} else {
+		lv_obj_remove_flag(rocket, LV_OBJ_FLAG_HIDDEN);
+		lv_obj_set_pos(rocket, x, y);
+	}
+
+	/* Exhaust: tapered segments, each flickering on its own */
+	for (int i = 0; i < FLAME_SEGS; i++) {
+		int32_t w;
+
+		if (i >= lit) {
+			lv_obj_add_flag(flame[i], LV_OBJ_FLAG_HIDDEN);
+			continue;
+		}
+		w = FLAME_W * (FLAME_SEGS - i) / FLAME_SEGS +
+		    (int32_t)(jitter(frame * 16 + i) % 5) - 2;
+		w = MAX(w, 2);
+		lv_obj_remove_flag(flame[i], LV_OBJ_FLAG_HIDDEN);
+		lv_obj_set_pos(flame[i], ROCKET_MID - w / 2, ROCKET_H + i * FLAME_SEG_H);
+		lv_obj_set_width(flame[i], w);
+	}
+
+	/* Smoke: puffs roll out along the ground, one starting after another */
+	for (int i = 0; i < SMOKE_PUFFS; i++) {
+		int32_t dt = MIN(ts, SMOKE_STOP_MS) - i * PUFF_STEP_MS;
+		int32_t d, side, rise;
+
+		if (dt < 0) {
+			lv_obj_add_flag(smoke[i], LV_OBJ_FLAG_HIDDEN);
+			continue;
+		}
+		d = MIN(12 + dt * 55 / 1000, 58);
+		side = (int32_t)(70 + jitter(i) % 110) * dt / 1000;
+		rise = (int32_t)(10 + jitter(i * 7 + 2) % 45) * dt / 1000;
+		x = LAUNCH_X + ((i & 1) ? side + 6 : -side - 6) +
+		    (int32_t)(jitter(i * 3 + 1) % 9) - 4;
+		y = GROUND_Y - 4 - rise;
+		lv_obj_remove_flag(smoke[i], LV_OBJ_FLAG_HIDDEN);
+		lv_obj_set_pos(smoke[i], x - d / 2, y - d / 2);
+		lv_obj_set_size(smoke[i], d, d);
+	}
 }
 
 static void refresh_settings_view(const struct ctrl_view *v)
@@ -771,7 +947,14 @@ void ui_refresh(void)
 	const struct ctrl_view *v = ctrl_view();
 	int64_t now = k_uptime_get();
 
-	if (v->state == CTRL_ARMED || v->state == CTRL_FIRING) {
+	if (v->state == CTRL_FIRING) {
+		refresh_launch_view(v, now);
+		show_only(launch_view);
+		return;
+	}
+	launch_start = -1;   /* the next launch starts the animation over */
+
+	if (v->state == CTRL_ARMED) {
 		refresh_armed_view(v, now);
 		show_only(armed_view);
 	} else if (v->fault_active) {
