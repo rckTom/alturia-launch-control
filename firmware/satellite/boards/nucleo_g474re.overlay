@@ -1,0 +1,81 @@
+/*
+ * Stand-in wiring for the satellite board on a Nucleo-G474RE, so that every
+ * driver the real board needs is compiled into the image. Pin choices are
+ * arbitrary where the Nucleo has no equivalent; only the device set matters.
+ *
+ * The SX1262 comes from the semtech_sx1262mb2das shield on arduino_spi.
+ */
+
+#include <zephyr/dt-bindings/gpio/gpio.h>
+
+/* USB-C: key provisioning path. The Nucleo has no USB connector, but the
+ * G474 peripheral is the same one the satellite board uses.
+ */
+zephyr_udc0: &usb {
+	pinctrl-0 = <&usb_dm_pa11 &usb_dp_pa12>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	cdc_acm_uart0: cdc_acm_uart0 {
+		compatible = "zephyr,cdc-acm-uart";
+	};
+};
+
+/* Sense chain: 24-bit ADC for continuity, 12-bit ADC for the rail dividers. */
+&spi2 {
+	cs-gpios = <&gpiob 12 GPIO_ACTIVE_LOW>,
+		   <&gpioc 6 GPIO_ACTIVE_LOW>;
+
+	adc_continuity: ads124s08@0 {
+		compatible = "ti,ads124s08";
+		reg = <0>;
+		spi-max-frequency = <4000000>;
+		#io-channel-cells = <1>;
+		drdy-gpios = <&gpioc 0 GPIO_ACTIVE_LOW>;
+		reset-gpios = <&gpioc 1 GPIO_ACTIVE_LOW>;
+		start-sync-gpios = <&gpioc 2 GPIO_ACTIVE_HIGH>;
+	};
+
+	adc_rails: mcp3208@1 {
+		compatible = "microchip,mcp3208";
+		reg = <1>;
+		spi-max-frequency = <1000000>;
+		#io-channel-cells = <1>;
+	};
+};
+
+/* Fire-rail current monitor across the 2 mOhm shunt. */
+&i2c1 {
+	rail_monitor: ina226@40 {
+		compatible = "ti,ina226";
+		reg = <0x40>;
+		current-lsb-microamps = <1250>;
+		rshunt-micro-ohms = <2000>;
+	};
+};
+
+/* Pyro channel control lines. On the satellite these are G474 GPIOs driving
+ * the TPS1HB08 enables and the low-side gates directly; gpio-leds is a
+ * stand-in compatible so they can be fetched with GPIO_DT_SPEC_GET.
+ */
+/ {
+	pyro_enables {
+		compatible = "gpio-leds";
+		en_h1: en_h1 { gpios = <&gpioa 0 GPIO_ACTIVE_HIGH>; };
+		en_h2: en_h2 { gpios = <&gpioa 1 GPIO_ACTIVE_HIGH>; };
+		en_h3: en_h3 { gpios = <&gpioa 4 GPIO_ACTIVE_HIGH>; };
+		en_h4: en_h4 { gpios = <&gpioa 8 GPIO_ACTIVE_HIGH>; };
+		en_h5: en_h5 { gpios = <&gpioa 9 GPIO_ACTIVE_HIGH>; };
+		en_h6: en_h6 { gpios = <&gpioa 10 GPIO_ACTIVE_HIGH>; };
+		en_l1: en_l1 { gpios = <&gpiob 0 GPIO_ACTIVE_HIGH>; };
+		en_l2: en_l2 { gpios = <&gpiob 1 GPIO_ACTIVE_HIGH>; };
+		en_l3: en_l3 { gpios = <&gpiob 2 GPIO_ACTIVE_HIGH>; };
+		en_l4: en_l4 { gpios = <&gpiob 3 GPIO_ACTIVE_HIGH>; };
+		en_l5: en_l5 { gpios = <&gpiob 5 GPIO_ACTIVE_HIGH>; };
+		en_l6: en_l6 { gpios = <&gpiob 7 GPIO_ACTIVE_HIGH>; };
+		hs_latch: hs_latch { gpios = <&gpioc 3 GPIO_ACTIVE_HIGH>; };
+		hs_dia_en: hs_dia_en { gpios = <&gpioc 4 GPIO_ACTIVE_HIGH>; };
+		arm_pump: arm_pump { gpios = <&gpioc 5 GPIO_ACTIVE_HIGH>; };
+		wdi: wdi { gpios = <&gpioc 7 GPIO_ACTIVE_HIGH>; };
+	};
+};
