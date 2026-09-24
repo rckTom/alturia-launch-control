@@ -11,6 +11,20 @@
 
 LOG_MODULE_REGISTER(satellite, LOG_LEVEL_INF);
 
+/* When a poll addressed to us last arrived (k_uptime_get_32); the console's heartbeat. */
+static atomic_t last_poll_ms;
+
+static void disarm_all(const char *why)
+{
+	if (channels_all_safe()) {
+		return;
+	}
+	LOG_WRN("SAFE: %s", why);
+	for (int ch = 0; ch < SAT_CHANNELS; ch++) {
+		channels_arm(ch, false);
+	}
+}
+
 /* Runs on the link thread. */
 static void on_link_event(const struct lsec_event *ev)
 {
@@ -28,6 +42,17 @@ static void on_link_event(const struct lsec_event *ev)
 		break;
 	case LSEC_EV_JOINED:
 		LOG_INF("session with the console up");
+		break;
+	case LSEC_EV_POLL:
+		/*
+		 * The console polls us: it is alive and counts us in. Its
+		 * commands will be in ev->data; with no status format yet the
+		 * link answers with an empty frame, which keeps the session.
+		 */
+		atomic_set(&last_poll_ms, (atomic_val_t)k_uptime_get_32());
+		break;
+	case LSEC_EV_LEFT:
+		disarm_all("session with the console dropped");
 		break;
 	case LSEC_EV_DATA:
 		/* Command dispatch lives here; the real protocol is the
@@ -95,6 +120,12 @@ int main(void)
 			for (int ch = 0; ch < SAT_CHANNELS; ch++) {
 				channels_arm(ch, false);
 			}
+		}
+
+		/* The console's heartbeat is being polled; without it, SAFE. */
+		if ((uint32_t)(k_uptime_get_32() - (uint32_t)atomic_get(&last_poll_ms)) >
+		    LINK_SAT_SAFE_TIMEOUT_MS) {
+			disarm_all("the console stopped polling");
 		}
 	}
 

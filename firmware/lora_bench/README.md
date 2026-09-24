@@ -92,23 +92,35 @@ Changing the role erases the pairing. Then:
    then on the controller (it pairs with the first satellite it hears).
    Both OLEDs show four rows of six boxes. If they are the same, press
    **PRG** on each board; if not, hold it. The log has the pattern too.
-   Both switch to SF7 at low power while pairing.
+   Both switch to SF8 at low power while pairing. The satellite goes into
+   slot 8, the last, so that `bench poll` can put phantom satellites
+   ahead of it.
 2. **Join.** Automatic, and again after either board reboots. The status
-   line reads `link: joined`.
+   line reads `link: joined`. From then on the controller polls the
+   satellite twice a second, as the real controller does, and the
+   satellite answers in its slot; that keeps the session up.
 3. **Ping.** Press **PRG** on the controller, or `bench ping`. Odd pings go
    to the satellite alone, even ones as group broadcasts; the satellite
    answers each with a sealed pong.
+4. **Poll.** `bench poll` sends polls and reports where each reply ends,
+   counted from the end of the poll, against its slot. Phantoms are
+   satellites that are not there, set in the mask ahead of ours to move
+   our reply to a later slot.
 
 | Command | |
 |---|---|
 | `bench role [off\|ctrl\|sat]` | Show or set the role (reboots) |
-| `bench pair [uid]` | Satellite: pairing mode. Controller: pair with `uid`, or the first one heard |
+| `bench pair [uid] [slot]` | Satellite: pairing mode. Controller: pair with `uid` (0: the first one heard) into `slot` (default 8) |
 | `bench scan [on\|off]` | Controller: log satellites in pairing mode |
 | `bench confirm` / `bench reject` | The patterns match / differ (or cancel) |
 | `bench unpair` | Forget the pairing |
 | `bench replay` | Resend the last sealed DATA frame byte for byte, as an attacker would |
 | `bench link` | Link state and why received frames were dropped |
 | `bench ping`, `bench stop` | Sealed ping run |
+| `bench poll [count] [interval_ms] [phantom_mask] [reply_len]` | Controller: polls, and where the replies land in their slots (default 20 every 250 ms) |
+| `bench lbt` | Noise floor, busy threshold and the listen-before-talk counters |
+| `bench jam <ms>` | Raw 255-byte frames back to back, without listening first |
+| `bench jam slot [on\|off]` | Controller: a 200 ms raw frame right after each poll, to see the satellite skip a busy slot |
 | `bench trace [off\|on\|hex]` | Log every frame sent and received, decoded; `hex` adds a dump |
 
 `bench trace on` shows each frame's kind and clear header. Sealed
@@ -116,13 +128,31 @@ bodies stay encrypted, so a DATA frame shows only its key id and
 counter:
 
 ```
-<inf> trace: rx HELLO        1 -> 0   net 3a41, 5 B, -45 dBm 9 dB
-<inf> trace: tx JOIN_REQ     0 -> 1   net 3a41, 13 B
-<inf> trace: tx DATA         0 -> ff  net 3a41 kid 2 ctr 17, 49 B
+<inf> trace: tx POLL         0 -> ff  net 33db kid 0 ctr 13, 33 B, sent in 50.9 ms
+<inf> trace: rx DATA         8 -> 0   net 33db kid 0 ctr 14, 31 B, 0 dBm 13 dB, +45.7 ms
+<inf> trace: rx HELLO        8 -> 0   net 33db, 5 B, -45 dBm 9 dB
+<inf> trace: lbt busy: 0 dBm, floor -76 dBm
 ```
 
 Address 0 is the controller, `ff` the group, and anything else a
-satellite's slot. Frames that fail the PHY CRC never reach the trace.
+satellite's slot. The last field is the time since the last poll, which
+is where the reply slots count from; "sent in" is how long the send
+blocked, airtime included. "lbt busy" lines are listens that found
+someone on the air. Frames that fail the PHY CRC never reach the trace.
+
+What to expect, with a 13-byte pong (31 B sealed, 36 ms on air, 43 ms
+slots):
+
+| Command | Result on the bench |
+|---|---|
+| `bench poll 50 250` | every reply ends at +45.7 to +46.4 ms, inside its slot (6–49 ms) |
+| `bench poll 40 300 0x07` | slot 3 of 4: +174.8 to +175.3 ms |
+| `bench poll 30 500 0x7f` | slot 7 of 8: +347.0 to +347.3 ms |
+| `bench jam slot on`, then `bench poll 10 500 0x07` | no replies; the satellite's `bench lbt` counts every slot skipped busy |
+| `bench jam 7000` on the satellite | the controller sends anyway after 50 ms of busy channel; it drops the session after 4 s, the satellite after 5 s; both rejoin as soon as the jam ends |
+
+The first slot cannot be jammed this way: the jam starts a few ms after
+the poll, after the satellite has listened.
 
 Things worth trying: `bench replay` on the controller must count as
 `replay` on the satellite and not answer; `bench unpair` on the satellite
@@ -138,6 +168,13 @@ allows only 5 mW ERP, so `radio_set_tx_power()` caps the power at 7 dBm.
 That assumes an antenna of at most 2.15 dBi; lower the cap by any gain
 above that. Pairing uses SF8 at 0 dBm, so the two profiles don't hear
 each other.
+
+The radio runs on Zephyr's native SX126x driver, kept in standby between
+operations (`CONFIG_LORA_MODULE_BACKEND_NATIVE`,
+`CONFIG_LORA_SX126X_NATIVE_SLEEP=n`). With loramac-node, which sleeps the
+chip after every call, each send took some 40 ms beyond its airtime, with
+enough jitter to push replies out of their slots. The kernel runs at
+10 000 ticks a second for the same reason.
 
 At SF7 and 250 kHz a 22-byte sealed command is about 28 ms on air and a
 63-byte status about 59 ms. Sensitivity is about −121 dBm, which leaves

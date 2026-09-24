@@ -39,6 +39,8 @@ struct secure_status {
 	uint32_t pongs;
 	uint32_t group_pongs;
 	uint32_t rtt_ms;
+
+	uint8_t slot;          /* the satellite's slot, 0 if none */
 };
 
 /* Role saved in settings; read it after settings_subsys_init(). */
@@ -52,12 +54,14 @@ void secure_main(enum bench_role role);
 enum secure_req_type {
 	REQ_CONFIRM,
 	REQ_REJECT,
-	REQ_PAIR,        /* satellite: pairing mode. controller: pair with uid (0 = first seen) */
+	REQ_PAIR,        /* satellite: pairing mode. controller: pair with uid (0 = first seen) into slot arg */
 	REQ_SCAN,        /* controller: arg = on/off */
 	REQ_UNPAIR,
 	REQ_REPLAY,
 	REQ_PING,        /* controller: arg = count, arg2 = interval */
 	REQ_STOP,
+	REQ_POLL,        /* controller: arg = count, arg2 = interval, uid = phantoms | reply_len << 8 */
+	REQ_JAM,         /* arg = ms of back-to-back raw frames, without listening first */
 };
 
 /* PRG button edges, from the input callback. */

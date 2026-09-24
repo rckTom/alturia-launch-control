@@ -11,8 +11,11 @@
  *     pairing mode, or "bench scan" and "bench pair <uid>".
  *   - Both OLEDs then show the same 4x6 pattern. Press PRG on each to
  *     confirm, hold it to reject.
- *   - Once joined, PRG on the controller (or "bench ping") runs sealed
- *     pings, alternating unicast and group frames.
+ *   - Once joined, the controller polls the satellite twice a second, as
+ *     the real controller does, which keeps the session up. PRG on the
+ *     controller (or "bench ping") runs sealed pings, alternating unicast
+ *     and group frames; "bench poll" measures where the satellite's
+ *     replies land in their slots.
  *
  * Link events arrive on the link thread. The shell and the button queue
  * requests for secure_main()'s thread, which also drives the display.
@@ -27,6 +30,7 @@
 
 #include "bench.h"
 #include "ctrl_link.h"
+#include "link_sched.h"
 #include "lsec_store.h"
 #include "oled.h"
 #include "radio.h"
@@ -36,12 +40,18 @@
 
 LOG_MODULE_REGISTER(secure, LOG_LEVEL_INF);
 
-/* The bench has one satellite, always in this slot. */
-#define BENCH_SLOT 1
+/*
+ * The bench has one satellite. It is paired into the last slot, so that
+ * "bench poll" can put phantom satellites ahead of it and test any rank.
+ */
+#define BENCH_PAIR_SLOT LSEC_MAX_SATS
 
 #define LOOP_PERIOD        K_MSEC(50)
 #define DISPLAY_REFRESH_MS 1000
 #define LONG_PRESS_MS      1000
+/* Controller: poll the satellite this often when nothing else is running. */
+#define HEARTBEAT_MS       500
+#define JAM_LEN            255
 
 static enum bench_role role;
 /* Written by both threads; st_lock keeps each update whole. */
@@ -56,6 +66,26 @@ static struct {
 	int64_t next_at;
 	int64_t sent_at;
 } ping;
+
+/* A "bench poll" run, and where its replies landed. */
+static struct {
+	uint32_t count;
+	uint32_t interval_ms;
+	uint8_t mask;
+	uint8_t reply_len;
+	uint8_t rank;
+	uint8_t slot_ms;
+	atomic_t seq;
+	int64_t next_at;
+	uint32_t answered;
+	uint32_t late;           /* ended after their slot */
+	int64_t min_us, max_us, sum_us;
+} poll;
+
+static int64_t next_heartbeat;
+
+/* The paired satellite's slot, found by looking; 0 when there is none. */
+static atomic_t sat_slot;
 
 struct secure_req {
 	enum secure_req_type type;
@@ -194,7 +224,8 @@ static void on_data(const struct lsec_event *ev)
 {
 	struct bench_pkt pkt;
 
-	if (ev->len != sizeof(pkt)) {
+	/* A pong may be padded to test longer replies. */
+	if (ev->len < sizeof(pkt)) {
 		LOG_INF("%zu-byte payload from slot %u", ev->len, ev->slot);
 		return;
 	}
@@ -225,7 +256,40 @@ static void on_data(const struct lsec_event *ev)
 		return;
 	}
 
-	if (role == ROLE_CTRL && pkt.type == BENCH_PONG && pkt.seq == atomic_get(&ping.seq)) {
+	if (role == ROLE_CTRL && pkt.type == BENCH_PONG && st.pinging && poll.count &&
+	    pkt.seq == atomic_get(&poll.seq)) {
+		struct ctrl_link_state ls;
+		int64_t off;
+		int64_t slot_end;
+
+		/* The reception time of this very frame, against the poll's end. */
+		ctrl_link_state(&ls);
+		off = ls.last_rx_us - ls.last_poll_end_us;
+		slot_end = link_slot_start_us(0, poll.rank + 1, poll.slot_ms);
+
+		poll.answered++;
+		poll.min_us = MIN(poll.min_us, off);
+		poll.max_us = MAX(poll.max_us, off);
+		poll.sum_us += off;
+		if (off > slot_end) {
+			poll.late++;
+		}
+
+		k_mutex_lock(&st_lock, K_FOREVER);
+		st.pongs++;
+		st.rtt_ms = off / 1000;
+		k_mutex_unlock(&st_lock);
+
+		LOG_INF("poll %u: reply at +%lld.%01lld ms, slot %lld-%lld ms, there %d dBm",
+			pkt.seq, off / 1000, (off % 1000) / 100,
+			link_slot_start_us(0, poll.rank, poll.slot_ms) / 1000, slot_end / 1000,
+			pkt.rssi_dbm);
+		return;
+	}
+
+	/* Seq 0 answers a heartbeat poll. */
+	if (role == ROLE_CTRL && pkt.type == BENCH_PONG && pkt.seq != 0 &&
+	    pkt.seq == atomic_get(&ping.seq)) {
 		struct ctrl_link_state ls;
 		uint32_t rtt = k_uptime_get() - ping.sent_at;
 		bool group = pkt.seq % 2 == 0;
@@ -243,15 +307,55 @@ static void on_data(const struct lsec_event *ev)
 	}
 }
 
+/* Satellite: answer a poll with a pong, padded to what the poll asks for. */
+static void on_poll(const struct lsec_event *ev)
+{
+	struct sat_link_state ls;
+	struct bench_pkt pkt = {0};
+	uint8_t reply[LSEC_MAX_PAYLOAD] = {0};
+	size_t len = sizeof(pkt);
+	int ret;
+
+	if (ev->len == sizeof(pkt)) {
+		memcpy(&pkt, ev->data, sizeof(pkt));
+	}
+	if (pkt.magic == BENCH_MAGIC && pkt.type == BENCH_POLL) {
+		len = CLAMP(pkt.dst, sizeof(pkt), sizeof(reply));
+	}
+
+	sat_link_state(&ls);
+
+	struct bench_pkt pong = {
+		.magic = BENCH_MAGIC,
+		.type = BENCH_PONG,
+		.src = bench_node_id(),
+		.seq = pkt.seq,
+		.rssi_dbm = ls.rssi_dbm,
+		.snr_db = ls.snr_db,
+	};
+
+	memcpy(reply, &pong, sizeof(pong));
+	ret = sat_link_reply(reply, len);
+
+	/* Seq 0 is the controller's heartbeat, twice a second. */
+	if (pkt.seq != 0) {
+		LOG_INF("poll %u: slot %u of %u, %u ms each, %d dBm%s", pkt.seq, ev->rank,
+			ev->count, ev->slot_ms, ls.rssi_dbm, ret ? ", reply too long" : "");
+	}
+}
+
 static void on_event(const struct lsec_event *ev)
 {
 	switch (ev->type) {
-	case LSEC_EV_ADV:
+	case LSEC_EV_ADV: {
+		atomic_val_t ap = atomic_get(&auto_pair);
+
 		LOG_INF("satellite %016llx in pairing mode, %d dBm", ev->uid, ev->rssi_dbm);
-		if (atomic_cas(&auto_pair, 1, 0)) {
-			secure_request(REQ_PAIR, ev->uid, 0, 0);
+		if (ap && atomic_cas(&auto_pair, ap, 0)) {
+			secure_request(REQ_PAIR, ev->uid, ap >> 8, 0);
 		}
 		break;
+	}
 	case LSEC_EV_SAS:
 		k_mutex_lock(&st_lock, K_FOREVER);
 		memcpy(st.sas, ev->sas, sizeof(st.sas));
@@ -280,6 +384,15 @@ static void on_event(const struct lsec_event *ev)
 		break;
 	case LSEC_EV_DATA:
 		on_data(ev);
+		break;
+	case LSEC_EV_POLL:
+		on_poll(ev);
+		break;
+	case LSEC_EV_LEFT:
+		note("session dropped");
+		LOG_WRN("session dropped: %s for %u ms",
+			role == ROLE_CTRL ? "no reply" : "not polled",
+			role == ROLE_CTRL ? LSEC_PEER_TIMEOUT_MS : LSEC_SESSION_TIMEOUT_MS);
 		break;
 	}
 
@@ -312,11 +425,12 @@ static void handle_request(const struct secure_req *req, int64_t now)
 			note("pairing mode");
 		} else if (req->uid == 0) {
 			LOG_INF("pairing with the first satellite in pairing mode");
-			atomic_set(&auto_pair, 1);
+			/* The slot goes with it, in the upper bits. */
+			atomic_set(&auto_pair, 1 | (req->arg << 8));
 			ctrl_link_scan(true);
 			note("looking");
 		} else {
-			ret = ctrl_link_pair_start(req->uid, BENCH_SLOT);
+			ret = ctrl_link_pair_start(req->uid, req->arg ? req->arg : BENCH_PAIR_SLOT);
 			note("pairing");
 		}
 		break;
@@ -329,7 +443,7 @@ static void handle_request(const struct secure_req *req, int64_t now)
 		break;
 
 	case REQ_UNPAIR:
-		ret = role == ROLE_CTRL ? ctrl_link_forget(BENCH_SLOT) : sat_link_unpair();
+		ret = role == ROLE_CTRL ? ctrl_link_forget(atomic_get(&sat_slot)) : sat_link_unpair();
 		note("unpaired");
 		break;
 
@@ -364,7 +478,62 @@ static void handle_request(const struct secure_req *req, int64_t now)
 
 	case REQ_STOP:
 		ping.count = 0;
+		poll.count = 0;
 		break;
+
+	case REQ_POLL: {
+		uint8_t slot = atomic_get(&sat_slot);
+		int air;
+
+		if (role != ROLE_CTRL || slot == 0) {
+			ret = -ENOTCONN;
+			break;
+		}
+
+		poll.count = req->arg;
+		poll.interval_ms = req->arg2;
+		poll.reply_len = CLAMP((req->uid >> 8) & 0xFF, sizeof(struct bench_pkt),
+				       LSEC_MAX_PAYLOAD);
+		/* Phantoms: satellites that are not there, ahead of ours. */
+		poll.mask = (req->uid & 0xFF) | BIT(slot - 1);
+		poll.rank = __builtin_popcount(poll.mask & (BIT(slot - 1) - 1));
+		air = radio_airtime_ms(poll.reply_len + LSEC_OVERHEAD);
+		poll.slot_ms = link_slot_ms(air);
+		atomic_set(&poll.seq, 0);
+		poll.next_at = now;
+		poll.answered = 0;
+		poll.late = 0;
+		poll.min_us = INT64_MAX;
+		poll.max_us = 0;
+		poll.sum_us = 0;
+
+		k_mutex_lock(&st_lock, K_FOREVER);
+		st.pinging = true;
+		st.ping_total = poll.count;
+		st.ping_sent = 0;
+		st.pongs = 0;
+		st.group_pongs = 0;
+		k_mutex_unlock(&st_lock);
+
+		LOG_INF("polls: %u every %u ms, mask 0x%02x: our satellite has slot %u of %u, "
+			"%u ms each (%u-byte reply, %d ms on air)",
+			poll.count, poll.interval_ms, poll.mask, poll.rank,
+			__builtin_popcount(poll.mask), poll.slot_ms, poll.reply_len, air);
+		break;
+	}
+
+	case REQ_JAM: {
+		static const uint8_t jam[JAM_LEN];
+		int64_t end = now + req->arg;
+		int frames = 0;
+
+		/* Straight to the radio, past the link and its listen-before-talk. */
+		while (k_uptime_get() < end && radio_send(jam, sizeof(jam)) == 0) {
+			frames++;
+		}
+		LOG_INF("jammed for %u ms: %d frames", req->arg, frames);
+		break;
+	}
 	}
 
 	if (ret) {
@@ -396,7 +565,7 @@ static void run_ping(int64_t now)
 		.src = bench_node_id(),
 		.seq = seq,
 	};
-	uint8_t dst = seq % 2 == 0 ? LSEC_ADDR_GROUP : BENCH_SLOT;
+	uint8_t dst = seq % 2 == 0 ? LSEC_ADDR_GROUP : atomic_get(&sat_slot);
 	int ret;
 
 	ping.sent_at = now;
@@ -409,6 +578,81 @@ static void run_ping(int64_t now)
 	if (ret) {
 		LOG_WRN("ping %u: not sent (%d), no session", seq, ret);
 	}
+}
+
+static void send_poll(uint8_t mask, uint32_t seq, uint8_t reply_len)
+{
+	struct bench_pkt pkt = {
+		.magic = BENCH_MAGIC,
+		.type = BENCH_POLL,
+		.src = bench_node_id(),
+		.dst = reply_len,
+		.seq = seq,
+	};
+	int ret = ctrl_link_poll(mask, &pkt, sizeof(pkt), reply_len);
+
+	if (ret && seq != 0) {
+		LOG_WRN("poll %u: not sent (%d)", seq, ret);
+	}
+}
+
+static void run_poll(int64_t now)
+{
+	uint32_t seq = atomic_get(&poll.seq);
+
+	if (now < poll.next_at) {
+		return;
+	}
+
+	if (seq >= poll.count) {
+		st.pinging = false;
+		poll.count = 0;
+		atomic_set(&st_changed, 1);
+		if (poll.answered) {
+			int64_t mean = poll.sum_us / poll.answered;
+
+			LOG_INF("%u of %u answered, at +%lld.%01lld to +%lld.%01lld ms (mean "
+				"%lld.%01lld), %u after their slot",
+				poll.answered, seq, poll.min_us / 1000, (poll.min_us % 1000) / 100,
+				poll.max_us / 1000, (poll.max_us % 1000) / 100, mean / 1000,
+				(mean % 1000) / 100, poll.late);
+		} else {
+			LOG_INF("0 of %u answered", seq);
+		}
+		return;
+	}
+
+	seq++;
+	atomic_set(&poll.seq, seq);
+	poll.next_at = now + poll.interval_ms;
+	st.ping_sent = seq;
+	atomic_set(&st_changed, 1);
+
+	send_poll(poll.mask, seq, poll.reply_len);
+}
+
+/* Keep the session up as the real controller does, unless a test runs. */
+static void run_heartbeat(int64_t now)
+{
+	uint8_t slot = atomic_get(&sat_slot);
+
+	if (st.pinging || slot == 0 || !ctrl_link_joined(slot) || now < next_heartbeat) {
+		return;
+	}
+
+	next_heartbeat = now + HEARTBEAT_MS;
+	send_poll(BIT(slot - 1), 0, sizeof(struct bench_pkt));
+}
+
+/* The controller's satellite is in whichever slot it was paired into. */
+static uint8_t find_slot(void)
+{
+	for (uint8_t slot = LSEC_MAX_SATS; slot >= 1; slot--) {
+		if (ctrl_link_paired_uid(slot)) {
+			return slot;
+		}
+	}
+	return 0;
 }
 
 /*
@@ -424,9 +668,11 @@ static void refresh_link_state(void)
 		struct ctrl_link_state ls;
 
 		ctrl_link_state(&ls);
-		now.uid = ctrl_link_paired_uid(BENCH_SLOT);
+		now.slot = find_slot();
+		atomic_set(&sat_slot, now.slot);
+		now.uid = now.slot ? ctrl_link_paired_uid(now.slot) : 0;
 		now.paired = now.uid != 0;
-		now.joined = ctrl_link_joined(BENCH_SLOT);
+		now.joined = now.slot && ctrl_link_joined(now.slot);
 		now.scanning = ls.scanning;
 		now.pairing = ls.scanning || ls.pairing;
 		now.stats = ls.stats;
@@ -434,6 +680,7 @@ static void refresh_link_state(void)
 		struct sat_link_state ls;
 
 		sat_link_state(&ls);
+		now.slot = ls.slot;
 		now.uid = ls.uid;
 		now.paired = ls.paired;
 		now.joined = ls.joined;
@@ -448,6 +695,7 @@ static void refresh_link_state(void)
 	st.scanning = now.scanning;
 	st.pairing = now.pairing;
 	st.stats = now.stats;
+	st.slot = now.slot;
 	k_mutex_unlock(&st_lock);
 }
 
@@ -482,7 +730,12 @@ void secure_main(enum bench_role r)
 		}
 
 		if (role == ROLE_CTRL) {
-			run_ping(now);
+			if (poll.count) {
+				run_poll(now);
+			} else {
+				run_ping(now);
+			}
+			run_heartbeat(now);
 		}
 
 		refresh_link_state();

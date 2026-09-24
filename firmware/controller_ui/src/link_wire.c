@@ -9,28 +9,38 @@
 #include "link_wire.h"
 
 enum wire_type {
-	WIRE_CMD = 1,
 	WIRE_STATUS = 2,
+	WIRE_POLL = 3,
 };
 
-size_t wire_encode_cmd(const struct link_cmd *cmd, uint8_t *out)
+size_t wire_encode_poll(const struct link_cmd cmds[NUM_SATS], uint8_t mask, uint8_t *out)
 {
-	out[0] = WIRE_CMD;
-	out[1] = cmd->type;
-	out[2] = cmd->mask;
-	out[3] = cmd->valves;
-	return WIRE_CMD_LEN;
+	uint8_t *p = out;
+
+	*p++ = WIRE_POLL;
+	for (int sat = 0; sat < NUM_SATS; sat++) {
+		if (mask & BIT(sat)) {
+			*p++ = cmds[sat].type;
+			*p++ = cmds[sat].mask;
+			*p++ = cmds[sat].valves;
+		}
+	}
+	return p - out;
 }
 
-int wire_decode_cmd(const uint8_t *buf, size_t len, struct link_cmd *cmd)
+int wire_decode_poll(const uint8_t *buf, size_t len, uint8_t rank, uint8_t count,
+		     struct link_cmd *cmd)
 {
-	if (len != WIRE_CMD_LEN || buf[0] != WIRE_CMD || buf[1] > CMD_FIRE) {
+	const uint8_t *rec = buf + 1 + rank * WIRE_POLL_CMD_LEN;
+
+	if (len != 1 + (size_t)count * WIRE_POLL_CMD_LEN || buf[0] != WIRE_POLL ||
+	    rank >= count || rec[0] > CMD_FIRE) {
 		return -EINVAL;
 	}
 
-	cmd->type = buf[1];
-	cmd->mask = buf[2];
-	cmd->valves = buf[3];
+	cmd->type = rec[0];
+	cmd->mask = rec[1];
+	cmd->valves = rec[2];
 	return 0;
 }
 

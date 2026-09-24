@@ -71,8 +71,13 @@ struct link_cmd {
 	uint8_t valves;
 };
 
-/* Queue a command for transmission to one satellite. It may be lost. */
-void link_send(int sat, const struct link_cmd *cmd);
+/*
+ * Poll every joined satellite: one broadcast carrying cmds[sat] for each,
+ * which each answers with its status in its own reply slot. The poll may
+ * be lost. -ENOTCONN if no satellite is joined, -EBUSY if polls are
+ * queueing up faster than they can be sent.
+ */
+int link_poll(const struct link_cmd cmds[NUM_SATS]);
 
 /*
  * Copy the most recently received status of one satellite. Returns the

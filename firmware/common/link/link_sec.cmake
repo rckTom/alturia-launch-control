@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# Link security (pairing, sessions, group key). Include from an app's
+# Link security (pairing, sessions, group key) and channel access timing. Include from an app's
 # CMakeLists.txt after find_package(Zephyr). Needs CONFIG_PSA_CRYPTO and the
 # PSA_WANT set listed in design/radio_security.md; lsec_store.c also needs
 # CONFIG_SETTINGS.
@@ -19,6 +19,7 @@ target_sources(app PRIVATE
 	${LSEC_DIR}/lsec_pair.c
 	${LSEC_DIR}/lsec_ctrl.c
 	${LSEC_DIR}/lsec_sat.c
+	${LSEC_DIR}/link_sched.c
 )
 
 if(CONFIG_SETTINGS)
@@ -28,6 +29,9 @@ endif()
 foreach(end ${LSEC_LINK})
 	target_sources(app PRIVATE ${LSEC_DIR}/${end}_link.c)
 endforeach()
+if(LSEC_LINK)
+	target_sources(app PRIVATE ${LSEC_DIR}/link_access.c)
+endif()
 
 if(LSEC_RADIO)
 	target_include_directories(app PRIVATE ${LSEC_DIR}/../lora)

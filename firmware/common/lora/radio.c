@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 
 #include <errno.h>
+#include <stdlib.h>
 #include <string.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/lora.h>
@@ -35,8 +36,25 @@ LOG_MODULE_REGISTER(radio, LOG_LEVEL_INF);
 #define PAIR_DATARATE     SF_8
 #define PAIR_TX_POWER_DBM 0
 
-/* Received packets waiting for radio_recv(). */
-#define RX_QUEUE_DEPTH 4
+/*
+ * Received packets waiting for radio_recv(). A satellite waiting for its
+ * reply slot hears every other satellite's reply first.
+ */
+#define RX_QUEUE_DEPTH 12
+
+/* Channel sensing: RSSI samples this far apart, and the busy threshold's range. */
+#define RSSI_SAMPLE_US     200
+#define FLOOR_CAL_SAMPLES  32
+#define THRESHOLD_MIN_DBM  -120
+#define THRESHOLD_MAX_DBM  -60
+/* The most the floor may rise per listen, in 1/16 dB. */
+#define FLOOR_RISE_Q4      4
+/*
+ * After (re)starting reception the RSSI reads low until the TCXO, if the
+ * board has one, and the receiver have settled.
+ */
+#define RX_SETTLE_US \
+	((DT_PROP_OR(DT_ALIAS(lora0), tcxo_power_startup_delay_ms, 0) + 1) * 1000)
 
 static const struct device *const lora = DEVICE_DT_GET(DT_ALIAS(lora0));
 
@@ -76,8 +94,18 @@ static int8_t antenna_power_dbm;
 /* What radio_set_tx_power() asked for; the link profile uses it. */
 static int8_t link_power_dbm = DEFAULT_TX_POWER_DBM;
 static enum radio_profile profile = RADIO_PROFILE_LINK;
+/* Noise floor in 1/16 dB, so that it can rise slowly. */
+static int32_t floor_q4 = -110 * 16;
+/* When reception was last started; RSSI is meaningless for RX_SETTLE_US. */
+static int64_t rx_since_us;
 
-/* The driver needs lora_config() whenever the direction changes. */
+/*
+ * loramac-node needs lora_config() whenever the direction changes. The
+ * native driver sets up each send and receive itself, and needs it only
+ * when the settings change, which DIR_NONE marks.
+ */
+#define CONFIG_PER_DIRECTION !IS_ENABLED(CONFIG_LORA_MODULE_BACKEND_NATIVE)
+
 static enum { DIR_NONE, DIR_TX, DIR_RX } direction = DIR_NONE;
 
 static int set_direction(bool tx)
@@ -85,6 +113,10 @@ static int set_direction(bool tx)
 	int ret;
 
 	if (direction == (tx ? DIR_TX : DIR_RX)) {
+		return 0;
+	}
+	if (!CONFIG_PER_DIRECTION && direction != DIR_NONE) {
+		direction = tx ? DIR_TX : DIR_RX;
 		return 0;
 	}
 
@@ -105,7 +137,11 @@ static void on_rx(const struct device *dev, uint8_t *data, uint16_t size,
 		  int16_t rssi, int8_t snr, void *user_data)
 {
 	struct rx_packet pkt = {
-		.info = { .rssi_dbm = rssi, .snr_db = snr },
+		.info = {
+			.rssi_dbm = rssi,
+			.snr_db = snr,
+			.time_us = k_ticks_to_us_floor64(k_uptime_ticks()),
+		},
 		.len = MIN(size, RADIO_MAX_PAYLOAD),
 	};
 
@@ -138,6 +174,7 @@ static int start_rx(void)
 
 	if (ret == 0) {
 		ret = lora_recv_async(lora, on_rx, NULL);
+		rx_since_us = k_ticks_to_us_floor64(k_uptime_ticks());
 	}
 	return ret;
 }
@@ -146,6 +183,47 @@ static void stop_rx(void)
 {
 	/* -EINVAL only means reception was not running. */
 	(void)lora_recv_async(lora, NULL, NULL);
+}
+
+/* Wait until the receiver started last gives a meaningful RSSI. */
+static void settle_rx(void)
+{
+	int64_t wait = rx_since_us + RX_SETTLE_US - k_ticks_to_us_floor64(k_uptime_ticks());
+
+	if (wait > 0) {
+		k_busy_wait(wait);
+	}
+}
+
+static int sample_rssi(int16_t *dbm)
+{
+	return lora_rssi(lora, dbm);
+}
+
+static int cmp_i16(const void *a, const void *b)
+{
+	return *(const int16_t *)a - *(const int16_t *)b;
+}
+
+/*
+ * The floor is the median of a burst of samples, so a packet going by
+ * during the burst does not move it much. Needs the receiver running.
+ */
+static void calibrate_floor(void)
+{
+	int16_t s[FLOOR_CAL_SAMPLES];
+
+	settle_rx();
+
+	for (int i = 0; i < FLOOR_CAL_SAMPLES; i++) {
+		if (sample_rssi(&s[i])) {
+			return;
+		}
+		k_busy_wait(RSSI_SAMPLE_US);
+	}
+
+	qsort(s, FLOOR_CAL_SAMPLES, sizeof(s[0]), cmp_i16);
+	floor_q4 = s[FLOOR_CAL_SAMPLES / 2] * 16;
 }
 
 static void apply_tx_power(int8_t dbm)
@@ -157,7 +235,7 @@ static void apply_tx_power(int8_t dbm)
 	antenna_power_dbm = chip + gain;
 
 	/* Picked up by the next switch into TX. */
-	if (direction == DIR_TX) {
+	if (direction == DIR_TX || !CONFIG_PER_DIRECTION) {
 		direction = DIR_NONE;
 	}
 }
@@ -193,6 +271,9 @@ int radio_set_profile(enum radio_profile p)
 	ret = load_tx_config();
 	if (ret == 0) {
 		ret = start_rx();
+	}
+	if (ret == 0) {
+		calibrate_floor();
 	}
 
 	LOG_INF("%s profile: SF%u, %d dBm", p == RADIO_PROFILE_PAIR ? "pairing" : "link",
@@ -232,6 +313,65 @@ uint32_t radio_airtime_ms(size_t len)
 	return lora_airtime(lora, len);
 }
 
+int radio_channel_clear(uint32_t listen_us, int margin_db, int16_t *peak_dbm)
+{
+	int n = listen_us / RSSI_SAMPLE_US + 1;
+	int16_t peak = INT16_MIN;
+	int16_t quiet = INT16_MAX;
+	int threshold;
+	int ret = 0;
+
+	k_mutex_lock(&lock, K_FOREVER);
+
+	/*
+	 * lora_rssi() reads the receiver, which runs whenever we are not
+	 * sending; right after a send it has only just started again.
+	 */
+	settle_rx();
+	for (int i = 0; i < n && ret == 0; i++) {
+		int16_t dbm;
+
+		ret = sample_rssi(&dbm);
+		if (ret == 0) {
+			peak = MAX(peak, dbm);
+			quiet = MIN(quiet, dbm);
+		}
+		if (i + 1 < n) {
+			k_busy_wait(RSSI_SAMPLE_US);
+		}
+	}
+
+	if (ret == 0) {
+		threshold = CLAMP(floor_q4 / 16 + margin_db, THRESHOLD_MIN_DBM, THRESHOLD_MAX_DBM);
+
+		/*
+		 * Follow a quieter channel at once, a louder one by at most
+		 * FLOOR_RISE_Q4 per listen: a burst of transmissions barely
+		 * moves the floor, a steady interferer is absorbed over some
+		 * tens of listens.
+		 */
+		if (quiet * 16 < floor_q4) {
+			floor_q4 = quiet * 16;
+		} else {
+			floor_q4 += MIN((quiet * 16 - floor_q4) / 32, FLOOR_RISE_Q4);
+		}
+
+		ret = peak <= threshold ? 1 : 0;
+	}
+
+	k_mutex_unlock(&lock);
+
+	if (peak_dbm) {
+		*peak_dbm = peak;
+	}
+	return ret;
+}
+
+int16_t radio_noise_floor(void)
+{
+	return floor_q4 / 16;
+}
+
 int radio_init(const struct radio_frontend *fe)
 {
 	int ret;
@@ -254,6 +394,10 @@ int radio_init(const struct radio_frontend *fe)
 	ret = load_tx_config();
 	if (ret == 0) {
 		ret = start_rx();
+	}
+	if (ret == 0) {
+		calibrate_floor();
+		LOG_INF("noise floor %d dBm", radio_noise_floor());
 	}
 
 	k_mutex_unlock(&lock);

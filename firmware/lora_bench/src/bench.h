@@ -15,13 +15,15 @@
 enum bench_pkt_type {
 	BENCH_PING = 1,
 	BENCH_PONG = 2,
+	BENCH_POLL = 3,   /* secure mode: the payload of a link poll */
 };
 
 struct bench_pkt {
 	uint8_t magic;
 	uint8_t type;
 	uint16_t src;      /* sender's node id */
-	uint16_t dst;      /* PONG: the pinging node. PING: 0, anyone answers. */
+	/* PONG: the pinging node. PING: 0, anyone answers. POLL: pad the PONG to this length. */
+	uint16_t dst;
 	uint32_t seq;
 	int16_t rssi_dbm;  /* PONG: how the PING was heard */
 	int8_t snr_db;

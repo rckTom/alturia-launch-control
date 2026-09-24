@@ -7,4 +7,4 @@ project(lsec_tests)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../link_sec.cmake)
 
-target_sources(app PRIVATE src/main.c)
+target_sources(app PRIVATE src/main.c src/sched.c)

@@ -6,6 +6,12 @@
  * switch to the pairing radio profile. The satellite firmware and the
  * bench's satellite role both run exactly this.
  *
+ * The controller polls; the satellite speaks when asked. On LSEC_EV_POLL
+ * the handler calls sat_link_reply(), and the link sends that reply in the
+ * satellite's slot of the poll cycle, after listening that the channel is
+ * clear. Everything else it sends (HELLO, join and pairing answers) waits
+ * for a clear channel first. See design/radio_security.md, "Channel access".
+ *
  * Every function may be called from any thread. Events arrive on the link
  * thread; a handler may call back into sat_link_*.
  */
@@ -17,6 +23,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "link_access.h"
 #include "link_transport.h"
 #include "lsec.h"
 
@@ -31,6 +38,14 @@ struct sat_link_state {
 	int16_t rssi_dbm;   /* of the last received packet */
 	int8_t snr_db;
 	struct lsec_stats stats;
+
+	uint32_t polls;          /* addressed to this satellite */
+	uint32_t replies;        /* sent in their slot */
+	uint32_t slot_busy;      /* slots skipped: someone else was on the air */
+	uint32_t slot_late;      /* slots skipped: missed their start */
+	struct link_lbt_stats lbt;   /* frames sent outside a slot */
+	int64_t last_poll_us;    /* reception of the last addressed poll, link_now_us() */
+	int64_t last_reply_us;   /* start of the last reply */
 };
 
 /*
@@ -40,7 +55,20 @@ struct sat_link_state {
  */
 int sat_link_init(link_event_cb cb, const struct link_transport *transport);
 
-/* Seal and send to the controller. -ENOTCONN without a session. */
+/*
+ * Answer the poll being handled; call it from the LSEC_EV_POLL handler.
+ * The reply goes out in this satellite's slot. Without a call an empty
+ * frame goes out instead, so the controller still hears from it.
+ * -EAGAIN outside a poll, -EMSGSIZE if the reply would not fit the slot.
+ */
+int sat_link_reply(const void *data, size_t len);
+
+/*
+ * Seal and send to the controller outside the poll cycle, after listening
+ * for a clear channel. -ENOTCONN without a session, -EBUSY while a reply
+ * waits for its slot. Prefer sat_link_reply(): an unscheduled frame can
+ * collide with the other satellites' replies.
+ */
 int sat_link_send(const void *data, size_t len);
 
 /*

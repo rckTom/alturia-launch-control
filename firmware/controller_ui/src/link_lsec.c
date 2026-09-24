@@ -1,7 +1,8 @@
 /*
  * link.h on the secure link (../common/link/ctrl_link.c). Commands go out
- * as sealed unicast frames, status comes back the same way; neither is
- * sent or accepted without a joined session.
+ * in one group-sealed poll per tick, and each satellite's status comes
+ * back sealed in its reply slot; neither is sent or accepted without a
+ * joined session.
  */
 
 #include <string.h>
@@ -64,6 +65,12 @@ static void on_event(const struct lsec_event *ev)
 	case LSEC_EV_JOINED:
 		LOG_INF("satellite %c: session up", sat_name(sat));
 		break;
+	case LSEC_EV_LEFT:
+		LOG_WRN("satellite %c: no reply for %u ms, session dropped", sat_name(sat),
+			LSEC_PEER_TIMEOUT_MS);
+		break;
+	case LSEC_EV_POLL:
+		break;   /* satellite side only */
 	default:
 		queue_pair_event(ev);
 		break;
@@ -79,13 +86,20 @@ int link_init(void)
 #endif
 }
 
-void link_send(int sat, const struct link_cmd *cmd)
+int link_poll(const struct link_cmd cmds[NUM_SATS])
 {
-	uint8_t buf[WIRE_CMD_LEN];
-	size_t len = wire_encode_cmd(cmd, buf);
+	uint8_t buf[WIRE_POLL_MAX_LEN];
+	/* Satellite n is slot n + 1, which is bit n of the link's mask. */
+	uint8_t mask = ctrl_link_joined_mask() & BIT_MASK(NUM_SATS);
+	size_t len;
 
-	/* Without a session the command is lost, like any other lost packet. */
-	(void)ctrl_link_send(SLOT(sat), buf, len);
+	/* Without a session a command is lost, like any other lost packet. */
+	if (mask == 0) {
+		return -ENOTCONN;
+	}
+
+	len = wire_encode_poll(cmds, mask, buf);
+	return ctrl_link_poll(mask, buf, len, WIRE_STATUS_LEN);
 }
 
 int64_t link_last_status(int sat, struct sat_status *out)

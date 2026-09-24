@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: Apache-2.0
+
+mainmenu "LoRa bench test"
+
+rsource "../common/link/Kconfig"
+
+source "Kconfig.zephyr"

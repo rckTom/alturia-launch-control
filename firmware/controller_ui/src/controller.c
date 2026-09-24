@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -110,23 +111,50 @@ static uint8_t valves_for(int sat)
 	return valves;
 }
 
-static void send(int sat, enum link_cmd_type type, uint8_t mask)
+static struct link_cmd cmd_for(int sat, enum link_cmd_type type, uint8_t mask)
 {
-	struct link_cmd cmd = {
+	return (struct link_cmd){
 		.type = type,
 		.mask = mask,
 		.valves = involved(sat) ? valves_for(sat) : 0,
 	};
+}
 
-	link_send(sat, &cmd);
+/* What every satellite gets in a poll unless something happens. */
+static void build_cmds(struct link_cmd cmds[NUM_SATS])
+{
+	for (int sat = 0; sat < NUM_SATS; sat++) {
+		if (v.state == CTRL_ARMING && involved(sat)) {
+			/* ARM is idempotent on the satellite, so resending is safe */
+			cmds[sat] = cmd_for(sat, CMD_ARM, arm_mask[sat]);
+		} else if (!involved(sat) && v.sat[sat].have_status &&
+			   v.sat[sat].st.state != SAT_SAFE) {
+			/* We think it is safe: make sure the satellite agrees */
+			cmds[sat] = cmd_for(sat, CMD_DISARM, 0);
+		} else {
+			cmds[sat] = cmd_for(sat, CMD_HEARTBEAT, 0);
+		}
+	}
+}
+
+/* One poll carries every satellite's command; each answers with its status. */
+static void poll_now(const struct link_cmd cmds[NUM_SATS])
+{
+	int ret = link_poll(cmds);
+
+	/* Nobody joined is normal; a backlog means the cycle is too long. */
+	if (ret == -EBUSY) {
+		LOG_WRN("poll dropped, link busy");
+	}
+	next_tx = k_uptime_get() + TX_PERIOD_MS;
 }
 
 static void send_heartbeats(void)
 {
-	for (int sat = 0; sat < NUM_SATS; sat++) {
-		send(sat, CMD_HEARTBEAT, 0);
-	}
-	next_tx = k_uptime_get() + TX_PERIOD_MS;
+	struct link_cmd cmds[NUM_SATS];
+
+	build_cmds(cmds);
+	poll_now(cmds);
 }
 
 static void set_all_ops(enum hybrid_op op)
@@ -139,10 +167,13 @@ static void set_all_ops(enum hybrid_op op)
 /* Disarm everything. Hybrid vents open by themselves once unpowered. */
 static void disarm_all(void)
 {
+	struct link_cmd cmds[NUM_SATS];
+
 	for (int sat = 0; sat < NUM_SATS; sat++) {
-		send(sat, CMD_DISARM, 0);
+		cmds[sat] = cmd_for(sat, CMD_DISARM, 0);
 		arm_mask[sat] = 0;
 	}
+	poll_now(cmds);
 	set_all_ops(HYB_CLOSED);
 	set_state(CTRL_SAFE);
 }
@@ -291,10 +322,9 @@ static void request_arm(void)
 	for (int sat = 0; sat < NUM_SATS; sat++) {
 		if (involved(sat)) {
 			cmd_seq[sat] = v.sat[sat].st.seq;
-			send(sat, CMD_ARM, arm_mask[sat]);
 		}
 	}
-	next_tx = k_uptime_get() + TX_PERIOD_MS;
+	send_heartbeats();   /* ARM, now that the state is ARMING */
 	ack_deadline = k_uptime_get() + ARM_ACK_TIMEOUT_MS;
 	message(MSG_INFO, "Arming...");
 }
@@ -904,9 +934,11 @@ static void tick_arming(int64_t now)
 static void start_fire(int64_t now)
 {
 	char list[PADS_FORMAT_LEN];
+	struct link_cmd cmds[NUM_SATS];
 
 	/* LAUNCH stops a running fill; vents stay closed during the pulse */
 	set_all_ops(HYB_CLOSED);
+	build_cmds(cmds);
 
 	for (int sat = 0; sat < NUM_SATS; sat++) {
 		uint8_t ign = 0;
@@ -921,9 +953,11 @@ static void start_fire(int64_t now)
 		}
 		fire_count[sat] = v.sat[sat].st.fire_count;
 		cmd_seq[sat] = v.sat[sat].st.seq;
-		/* Sent once on purpose: a retry could fire twice. */
-		send(sat, CMD_FIRE, ign);
+		cmds[sat] = cmd_for(sat, CMD_FIRE, ign);
 	}
+
+	/* One poll, on purpose: a retry could fire twice. */
+	poll_now(cmds);
 
 	ack_deadline = now + FIRE_ACK_TIMEOUT_MS;
 	set_state(CTRL_FIRING);
@@ -1085,19 +1119,7 @@ void ctrl_tick(void)
 	}
 
 	if (now >= next_tx) {
-		for (int sat = 0; sat < NUM_SATS; sat++) {
-			if (v.state == CTRL_ARMING && involved(sat)) {
-				/* ARM is idempotent on the satellite, so resending is safe */
-				send(sat, CMD_ARM, arm_mask[sat]);
-			} else if (!involved(sat) && v.sat[sat].have_status &&
-				   v.sat[sat].st.state != SAT_SAFE) {
-				/* We think it is safe: make sure the satellite agrees */
-				send(sat, CMD_DISARM, 0);
-			} else {
-				send(sat, CMD_HEARTBEAT, 0);
-			}
-		}
-		next_tx = now + TX_PERIOD_MS;
+		send_heartbeats();
 	}
 }
 

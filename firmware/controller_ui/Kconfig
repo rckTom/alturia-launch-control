@@ -21,4 +21,6 @@ config APP_FIRE_HOLD_MS
 	  The fire control must be held continuously for this long
 	  before the fire command is sent.
 
+rsource "../common/link/Kconfig"
+
 source "Kconfig.zephyr"

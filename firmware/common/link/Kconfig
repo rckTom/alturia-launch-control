@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Channel access for the controller <-> satellite link: the controller's
+# poll cycle, the satellites' reply slots, listen-before-talk and the link
+# timeouts. See design/radio_security.md, "Channel access". rsource this
+# from an app's Kconfig.
+
+menu "Link channel access"
+
+config LINK_SAT_SAFE_TIMEOUT_MS
+	int "Satellite: go SAFE after this long without an addressed poll"
+	default 1500
+	help
+	  The satellite application disarms every channel when no poll
+	  addressed to it has arrived for this long. The session is kept, so
+	  the next poll brings it back without a new join.
+
+config LINK_CTRL_PEER_TIMEOUT_MS
+	int "Controller: drop a satellite's session after this long without a reply"
+	default 4000
+	help
+	  The controller stops addressing a satellite whose session it has
+	  dropped, so the satellite times out too, and then joins again.
+
+config LINK_SAT_SESSION_TIMEOUT_MS
+	int "Satellite: drop the session after this long without an addressed poll"
+	default 5000
+	help
+	  After this the satellite forgets its session keys and sends HELLO
+	  until the controller joins it again. Keep it above
+	  LINK_CTRL_PEER_TIMEOUT_MS.
+
+config LINK_TURNAROUND_MS
+	int "Time from the end of a poll to the start of the first reply slot"
+	default 6
+	help
+	  Covers the satellite decrypting the poll and building its reply,
+	  and both radios switching direction.
+
+config LINK_SLOT_GUARD_MS
+	int "Guard time added to every reply slot"
+	default 6
+	help
+	  Absorbs timing jitter between satellites and the listen-before-talk
+	  at the start of each slot.
+
+config LINK_LBT
+	bool "Listen before talk"
+	default y
+	help
+	  Sample the channel's RSSI before transmitting. Turn off to compare
+	  with plain scheduled access on the bench.
+
+if LINK_LBT
+
+config LINK_LBT_LISTEN_US
+	int "How long each listen samples the channel, in microseconds"
+	default 1000
+
+config LINK_LBT_MARGIN_DB
+	int "Busy threshold above the measured noise floor, in dB"
+	default 10
+
+config LINK_LBT_BACKOFF_MAX_MS
+	int "Upper bound of one random backoff, in ms"
+	default 10
+
+config LINK_LBT_MAX_DEFER_MS
+	int "Controller: transmit anyway after deferring this long, in ms"
+	default 50
+	help
+	  A poll carries SAFE and FIRE, so the controller never waits on
+	  someone else's traffic for longer than this.
+
+endif # LINK_LBT
+
+endmenu

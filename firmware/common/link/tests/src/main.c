@@ -44,6 +44,11 @@ struct node {
 	size_t data_len;
 	bool data_group;
 	uint8_t data_slot;
+	int polls;
+	struct lsec_event poll;          /* the last POLL, data copied to poll_data */
+	uint8_t poll_data[LSEC_MAX_PAYLOAD];
+	bool auto_reply;                 /* satellite: answer every POLL with empty DATA */
+	int lefts;
 	struct lsec_pairing stored[LSEC_MAX_SATS + 1];
 	bool has_stored[LSEC_MAX_SATS + 1];
 };
@@ -117,6 +122,18 @@ static void io_event(void *user, const struct lsec_event *ev)
 		n->data_slot = ev->slot;
 		memcpy(n->data, ev->data, ev->len);
 		break;
+	case LSEC_EV_POLL:
+		n->polls++;
+		n->poll = *ev;
+		memcpy(n->poll_data, ev->data, ev->len);
+		n->poll.data = n->poll_data;
+		if (n->auto_reply) {
+			zassert_ok(lsec_sat_send(n->sat, NULL, 0));
+		}
+		break;
+	case LSEC_EV_LEFT:
+		n->lefts++;
+		break;
 	}
 }
 
@@ -151,10 +168,16 @@ static void node_init(int i, uint64_t uid)
 	n->is_ctrl = is_ctrl;
 	n->up = true;
 
+	/*
+	 * The session timeouts are off unless a test turns them on: most
+	 * tests leave the link idle for longer than they last.
+	 */
 	if (is_ctrl) {
 		zassert_ok(lsec_ctrl_init(c, &io, uid == 0 ? NET : (uint32_t)uid));
+		c->peer_timeout_ms = 0;
 	} else {
 		zassert_ok(lsec_sat_init(s, &io, uid));
+		s->session_timeout_ms = 0;
 	}
 }
 
@@ -691,7 +714,8 @@ ZTEST(lsec, test_controller_reboot_needs_new_join)
 	zassert_equal(lsec_ctrl_send(&ctrl, 1, msg, sizeof(msg)), -ENOTCONN);
 
 	/* The satellite notices the silence and asks to join again. */
-	tick(LSEC_RX_IDLE_MS + LSEC_HELLO_MS);
+	sat1.session_timeout_ms = LSEC_SESSION_TIMEOUT_MS;
+	tick(LSEC_SESSION_TIMEOUT_MS + LSEC_HELLO_MS);
 	join(N_SAT1, 1);
 
 	int before = nodes[N_SAT1].datas;
@@ -823,6 +847,256 @@ ZTEST(lsec, test_sas_layout)
 	for (int i = 0; i < LSEC_SAS_FRAMES; i++) {
 		zassert_true(nodes[N_CTRL].sas[i] < (1 << LSEC_SAS_LEDS));
 	}
+}
+
+/* ---- polls and session timeouts ------------------------------------ */
+
+#define SLOT_BIT(slot) (1u << ((slot) - 1))
+#define TEST_SLOT_MS   40
+
+static void send_poll(uint8_t mask, const void *data, size_t len)
+{
+	zassert_ok(lsec_ctrl_send_poll(&ctrl, mask, TEST_SLOT_MS, data, len));
+	pump();
+}
+
+ZTEST(lsec, test_poll_ranks)
+{
+	static const char cmds[] = "abcd";
+	uint8_t mask = SLOT_BIT(1) | SLOT_BIT(2) | SLOT_BIT(4) | SLOT_BIT(5);
+
+	pair(N_SAT1, 2);
+	pair(N_SAT2, 5);
+	join(N_SAT1, 2);
+	join(N_SAT2, 5);
+
+	send_poll(mask, cmds, sizeof(cmds));
+
+	/* Slots 1 and 4 are not paired; the ranks still count them. */
+	zassert_equal(nodes[N_SAT1].polls, 1);
+	zassert_equal(nodes[N_SAT1].poll.rank, 1);
+	zassert_equal(nodes[N_SAT1].poll.count, 4);
+	zassert_equal(nodes[N_SAT1].poll.slot_ms, TEST_SLOT_MS);
+	zassert_equal(nodes[N_SAT1].poll.len, sizeof(cmds));
+	zassert_mem_equal(nodes[N_SAT1].poll_data, cmds, sizeof(cmds));
+
+	zassert_equal(nodes[N_SAT2].polls, 1);
+	zassert_equal(nodes[N_SAT2].poll.rank, 3);
+	zassert_equal(nodes[N_SAT2].poll.count, 4);
+
+	/* A poll is not application data. */
+	zassert_equal(nodes[N_SAT1].datas, 0);
+}
+
+ZTEST(lsec, test_poll_unaddressed_silent)
+{
+	struct frame f;
+	uint32_t ok;
+
+	pair(N_SAT1, 1);
+	join(N_SAT1, 1);
+	ok = sat1.stats.rx_ok;
+
+	send_poll(SLOT_BIT(2), NULL, 0);
+	zassert_equal(nodes[N_SAT1].polls, 0);
+	zassert_equal(nodes[N_SAT1].datas, 0);
+	zassert_equal(sat1.stats.rx_ok, ok + 1, "poll not opened");
+
+	/* The window moved all the same. */
+	f = captured[N_CTRL][KIND_POLL];
+	inject(N_SAT1, &f);
+	zassert_equal(sat1.stats.replay, 1);
+}
+
+ZTEST(lsec, test_polls_keep_session)
+{
+	pair(N_SAT1, 1);
+	join(N_SAT1, 1);
+	sat1.session_timeout_ms = LSEC_SESSION_TIMEOUT_MS;
+	memset(&captured[N_SAT1][KIND_HELLO], 0, sizeof(struct frame));
+
+	for (int64_t t = 0; t < 3 * LSEC_SESSION_TIMEOUT_MS; t += 300) {
+		send_poll(SLOT_BIT(1), NULL, 0);
+		tick(300);
+	}
+
+	zassert_true(lsec_sat_joined(&sat1));
+	zassert_equal(nodes[N_SAT1].lefts, 0);
+	zassert_equal(captured[N_SAT1][KIND_HELLO].len, 0, "HELLO while being polled");
+}
+
+ZTEST(lsec, test_unaddressed_times_out)
+{
+	static const char all[] = "HB";
+
+	pair(N_SAT1, 1);
+	join(N_SAT1, 1);
+	sat1.session_timeout_ms = LSEC_SESSION_TIMEOUT_MS;
+	memset(&captured[N_SAT1][KIND_HELLO], 0, sizeof(struct frame));
+
+	/*
+	 * The controller is alive and broadcasting, but no longer asks this
+	 * satellite: that must end its session.
+	 */
+	for (int64_t t = 0; t < LSEC_SESSION_TIMEOUT_MS + 300; t += 300) {
+		send_poll(SLOT_BIT(2), NULL, 0);
+		zassert_ok(lsec_ctrl_send(&ctrl, LSEC_ADDR_GROUP, all, sizeof(all)));
+		pump();
+		tick(300);
+	}
+
+	zassert_equal(nodes[N_SAT1].lefts, 1);
+	zassert_true(captured[N_SAT1][KIND_HELLO].len > 0, "no HELLO after the timeout");
+
+	/* The HELLO brings a new join. */
+	join(N_SAT1, 1);
+	send_poll(SLOT_BIT(1), NULL, 0);
+	zassert_equal(nodes[N_SAT1].polls, 1);
+}
+
+ZTEST(lsec, test_poll_tamper)
+{
+	struct frame f;
+	struct lsec_dir d;
+	uint8_t body[LSEC_POLL_HDR] = {SLOT_BIT(1), 0};
+	int n;
+
+	pair(N_SAT1, 1);
+	join(N_SAT1, 1);
+	send_poll(SLOT_BIT(1), NULL, 0);
+	zassert_equal(nodes[N_SAT1].polls, 1);
+
+	/* The mask is under the tag. */
+	f = captured[N_CTRL][KIND_POLL];
+	f.buf[SEAL_HDR] ^= SLOT_BIT(2);
+	f.buf[6] += 1;
+	inject(N_SAT1, &f);
+	zassert_equal(sat1.stats.bad_tag, 1);
+
+	/* A poll is never unicast. */
+	f = captured[N_CTRL][KIND_POLL];
+	f.buf[4] = 1;
+	f.buf[6] += 2;
+	inject(N_SAT1, &f);
+	zassert_equal(sat1.stats.malformed, 1);
+
+	/* Validly sealed but broken bodies: no slot length, then no mask. */
+	d = ctrl.group.dir;
+	n = lsec_seal(&d, KIND_POLL, NET, LSEC_ADDR_CTRL, LSEC_ADDR_GROUP, ctrl.group.kid, body,
+		      sizeof(body), f.buf);
+	zassert_true(n > 0);
+	f.len = n;
+	inject(N_SAT1, &f);
+	zassert_equal(sat1.stats.malformed, 2);
+
+	n = lsec_seal(&d, KIND_POLL, NET, LSEC_ADDR_CTRL, LSEC_ADDR_GROUP, ctrl.group.kid, body, 1,
+		      f.buf);
+	f.len = n;
+	inject(N_SAT1, &f);
+	zassert_equal(sat1.stats.malformed, 3);
+	zassert_equal(nodes[N_SAT1].polls, 1);
+}
+
+ZTEST(lsec, test_poll_shares_group_counter)
+{
+	static const char all[] = "HB";
+	struct frame first;
+
+	pair(N_SAT1, 1);
+	join(N_SAT1, 1);
+
+	send_poll(SLOT_BIT(1), NULL, 0);
+	first = captured[N_CTRL][KIND_POLL];
+	zassert_ok(lsec_ctrl_send(&ctrl, LSEC_ADDR_GROUP, all, sizeof(all)));
+	pump();
+	send_poll(SLOT_BIT(1), NULL, 0);
+
+	zassert_equal(nodes[N_SAT1].polls, 2);
+	zassert_equal(nodes[N_SAT1].datas, 1);
+
+	inject(N_SAT1, &first);
+	zassert_equal(nodes[N_SAT1].polls, 2);
+	zassert_equal(sat1.stats.replay, 1);
+}
+
+ZTEST(lsec, test_poll_after_rotation)
+{
+	pair(N_SAT1, 1);
+	pair(N_SAT2, 2);
+	join(N_SAT1, 1);
+	join(N_SAT2, 2);
+
+	zassert_ok(lsec_ctrl_forget(&ctrl, 2, now));
+	pump();
+
+	/* Even with its bit set, the forgotten satellite cannot read the poll. */
+	send_poll(SLOT_BIT(1) | SLOT_BIT(2), NULL, 0);
+	zassert_equal(nodes[N_SAT1].polls, 1);
+	zassert_equal(nodes[N_SAT1].poll.rank, 0);
+	zassert_equal(nodes[N_SAT2].polls, 0);
+}
+
+ZTEST(lsec, test_send_poll_args)
+{
+	static uint8_t big[LSEC_MAX_POLL_PAYLOAD + 1];
+
+	zassert_equal(lsec_ctrl_send_poll(&ctrl, 0, TEST_SLOT_MS, NULL, 0), -EINVAL);
+	zassert_equal(lsec_ctrl_send_poll(&ctrl, SLOT_BIT(1), 0, NULL, 0), -EINVAL);
+	zassert_equal(lsec_ctrl_send_poll(&ctrl, SLOT_BIT(1), TEST_SLOT_MS, big, sizeof(big)),
+		      -EMSGSIZE);
+	zassert_ok(lsec_ctrl_send_poll(&ctrl, SLOT_BIT(1), TEST_SLOT_MS, big, sizeof(big) - 1));
+
+	/* Nobody is joined, and the poll still goes out as asked. */
+	zassert_equal(lsec_ctrl_joined_mask(&ctrl), 0);
+	zassert_ok(lsec_ctrl_send_poll(&ctrl, 0xFF, TEST_SLOT_MS, NULL, 0));
+	zassert_equal(lsec_frame_kind(captured[N_CTRL][KIND_POLL].buf,
+				      captured[N_CTRL][KIND_POLL].len), KIND_POLL);
+}
+
+ZTEST(lsec, test_ctrl_peer_timeout)
+{
+	static const char msg[] = "HB";
+
+	pair(N_SAT1, 1);
+	join(N_SAT1, 1);
+	zassert_equal(lsec_ctrl_joined_mask(&ctrl), SLOT_BIT(1));
+	ctrl.peer_timeout_ms = LSEC_PEER_TIMEOUT_MS;
+
+	nodes[N_SAT1].up = false;
+	tick(LSEC_PEER_TIMEOUT_MS + 200);
+
+	zassert_equal(nodes[N_CTRL].lefts, 1);
+	zassert_false(lsec_ctrl_joined(&ctrl, 1));
+	zassert_equal(lsec_ctrl_joined_mask(&ctrl), 0);
+	zassert_not_null(lsec_ctrl_pairing(&ctrl, 1), "pairing lost with the session");
+	zassert_equal(lsec_ctrl_send(&ctrl, 1, msg, sizeof(msg)), -ENOTCONN);
+
+	/* It rejoins from the controller's side once it can hear again. */
+	nodes[N_SAT1].up = true;
+	tick(LSEC_JOIN_RETRY_MS);
+	join(N_SAT1, 1);
+	zassert_ok(lsec_ctrl_send(&ctrl, 1, msg, sizeof(msg)));
+	pump();
+	zassert_equal(nodes[N_SAT1].datas, 1);
+}
+
+ZTEST(lsec, test_replies_keep_peer)
+{
+	pair(N_SAT1, 1);
+	join(N_SAT1, 1);
+	ctrl.peer_timeout_ms = LSEC_PEER_TIMEOUT_MS;
+	nodes[N_SAT1].auto_reply = true;
+
+	for (int64_t t = 0; t < 3 * LSEC_PEER_TIMEOUT_MS; t += 300) {
+		send_poll(SLOT_BIT(1), NULL, 0);
+		tick(300);
+	}
+
+	zassert_equal(nodes[N_CTRL].lefts, 0);
+	zassert_true(lsec_ctrl_joined(&ctrl, 1));
+	/* The empty replies arrive as DATA. */
+	zassert_true(nodes[N_CTRL].datas > 0);
+	zassert_equal(nodes[N_CTRL].data_len, 0);
 }
 
 ZTEST_SUITE(lsec, NULL, NULL, setup, NULL, NULL);

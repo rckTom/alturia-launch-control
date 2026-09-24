@@ -32,10 +32,11 @@ enum lsec_kind {
 	KIND_GROUP_UPDATE,   /* GTK 16, kid 1, group ctr 4 */
 	KIND_GROUP_ACK,      /* kid 1 */
 	KIND_DATA,           /* application payload */
+	KIND_POLL,           /* group only: mask 1, slot_ms 1, application payload */
 };
 
 #define KIND_IS_PAIR(k)   ((k) >= KIND_PAIR_ADV && (k) <= KIND_PAIR_ABORT)
-#define KIND_IS_SEALED(k) ((k) >= KIND_JOIN_OK && (k) <= KIND_DATA)
+#define KIND_IS_SEALED(k) ((k) >= KIND_JOIN_OK && (k) <= KIND_POLL)
 
 #define PAIR_HDR  9
 #define LINK_HDR  5

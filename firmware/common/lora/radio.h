@@ -38,6 +38,7 @@ struct radio_frontend {
 struct radio_rx_info {
 	int16_t rssi_dbm;
 	int8_t snr_db;
+	int64_t time_us;   /* uptime when the packet had been received */
 };
 
 int radio_init(const struct radio_frontend *fe);
@@ -76,6 +77,16 @@ enum radio_profile {
 
 int radio_set_profile(enum radio_profile p);
 enum radio_profile radio_profile(void);
+
+/*
+ * Listen for @p listen_us and say whether the channel is free: 1 clear,
+ * 0 busy, negative if it could not be sampled. Busy means an RSSI sample
+ * above the noise floor plus @p margin_db. The floor is measured at init
+ * and on each profile change, and follows the quietest samples after that.
+ * @p peak_dbm (may be NULL) gets the loudest sample.
+ */
+int radio_channel_clear(uint32_t listen_us, int margin_db, int16_t *peak_dbm);
+int16_t radio_noise_floor(void);
 
 uint32_t radio_frequency(void);
 unsigned int radio_spreading_factor(void);

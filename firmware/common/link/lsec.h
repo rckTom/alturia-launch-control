@@ -37,6 +37,10 @@
 
 #define LSEC_KEY_BYTES 16
 
+/* A poll's body starts with the mask and the slot length. */
+#define LSEC_POLL_HDR         2
+#define LSEC_MAX_POLL_PAYLOAD (LSEC_MAX_PAYLOAD - LSEC_POLL_HDR)
+
 /* The short authentication string: 4 frames of 6 LEDs, bit n = LED n+1. */
 #define LSEC_SAS_FRAMES 4
 #define LSEC_SAS_LEDS   6
@@ -48,10 +52,24 @@
 #define LSEC_PAIR_TIMEOUT_MS 90000  /* controller, from pair start */
 #define LSEC_PAIR_LINGER_MS  3000   /* satellite answers late CHK_C after pairing */
 #define LSEC_HELLO_MS        2000   /* satellite HELLO while it wants a session */
-#define LSEC_RX_IDLE_MS      5000   /* satellite asks to re-join after this silence */
 #define LSEC_JOIN_RETRY_MS   10000  /* controller JOIN_REQ to an unjoined slot */
 #define LSEC_HELLO_JOIN_MS   1000   /* controller answers HELLOs at most this often */
 #define LSEC_RESEND_MS       1000   /* JOIN_OK and GROUP_UPDATE until acked */
+
+/*
+ * Session timeouts, the defaults of lsec_sat.session_timeout_ms and
+ * lsec_ctrl.peer_timeout_ms. They come from ../link/Kconfig in an app.
+ */
+#ifdef CONFIG_LINK_SAT_SESSION_TIMEOUT_MS
+#define LSEC_SESSION_TIMEOUT_MS CONFIG_LINK_SAT_SESSION_TIMEOUT_MS
+#else
+#define LSEC_SESSION_TIMEOUT_MS 5000   /* satellite: no addressed poll, drop the session */
+#endif
+#ifdef CONFIG_LINK_CTRL_PEER_TIMEOUT_MS
+#define LSEC_PEER_TIMEOUT_MS CONFIG_LINK_CTRL_PEER_TIMEOUT_MS
+#else
+#define LSEC_PEER_TIMEOUT_MS 4000      /* controller: no reply, drop the satellite's session */
+#endif
 
 /* What a pairing leaves behind on both sides. */
 struct lsec_pairing {
@@ -68,6 +86,8 @@ enum lsec_event_type {
 	LSEC_EV_PAIR_FAILED, /* both: reason says why */
 	LSEC_EV_JOINED,      /* both: session up (slot) */
 	LSEC_EV_DATA,        /* both: authenticated payload (slot, group, data, len) */
+	LSEC_EV_POLL,        /* satellite: a poll addressed to it (rank, count, slot_ms, data, len) */
+	LSEC_EV_LEFT,        /* both: session dropped by its timeout (slot) */
 };
 
 enum lsec_fail {
@@ -88,8 +108,11 @@ struct lsec_event {
 	int16_t rssi_dbm;      /* ADV */
 	enum lsec_fail reason; /* PAIR_FAILED */
 	uint8_t sas[LSEC_SAS_FRAMES];
-	const uint8_t *data;   /* DATA, valid during the callback only */
+	const uint8_t *data;   /* DATA, POLL: valid during the callback only */
 	size_t len;
+	uint8_t rank;          /* POLL: reply slot, counted among the addressed satellites */
+	uint8_t count;         /* POLL: satellites addressed */
+	uint8_t slot_ms;       /* POLL: length of one reply slot */
 };
 
 struct lsec_io {
@@ -171,6 +194,7 @@ struct lsec_ctrl_peer {
 	struct lsec_join hs;
 	struct lsec_dir tx;  /* controller -> satellite */
 	struct lsec_dir rx;  /* satellite -> controller */
+	int64_t last_rx;     /* last authenticated frame from the satellite */
 };
 
 struct lsec_ctrl {
@@ -181,6 +205,7 @@ struct lsec_ctrl {
 	bool scanning;
 	struct lsec_pair pair;
 	struct lsec_stats stats;
+	uint32_t peer_timeout_ms;   /* 0: never drop a silent satellite */
 };
 
 struct lsec_sat {
@@ -195,8 +220,10 @@ struct lsec_sat {
 	struct lsec_dir tx;
 	struct lsec_dir rx;
 	struct lsec_group group;
-	int64_t last_rx;     /* last authenticated frame from the controller */
+	/* Last unicast frame or addressed poll from the controller. */
+	int64_t last_rx;
 	int64_t last_hello;
+	uint32_t session_timeout_ms;   /* 0: keep the session however long it is quiet */
 	struct lsec_pair pair;
 	struct lsec_stats stats;
 };
@@ -209,7 +236,17 @@ void lsec_ctrl_rx(struct lsec_ctrl *c, const uint8_t *buf, size_t len, int16_t r
 void lsec_ctrl_poll(struct lsec_ctrl *c, int64_t now);
 /* Seal and transmit to one slot, or to LSEC_ADDR_GROUP. */
 int lsec_ctrl_send(struct lsec_ctrl *c, uint8_t dst, const void *data, size_t len);
+/*
+ * Broadcast a poll. Bit n of @p mask addresses slot n+1; each addressed
+ * satellite replies in the slot given by its rank among the set bits, each
+ * slot @p slot_ms long. The mask goes out as given, joined or not, so it
+ * always matches the order of the records the app put in @p data.
+ */
+int lsec_ctrl_send_poll(struct lsec_ctrl *c, uint8_t mask, uint8_t slot_ms, const void *data,
+			size_t len);
 bool lsec_ctrl_joined(const struct lsec_ctrl *c, uint8_t slot);
+/* Bit n set when slot n+1 has a session. */
+uint8_t lsec_ctrl_joined_mask(const struct lsec_ctrl *c);
 const struct lsec_pairing *lsec_ctrl_pairing(const struct lsec_ctrl *c, uint8_t slot);
 /* Erase a pairing and move the remaining satellites to a new group key. */
 int lsec_ctrl_forget(struct lsec_ctrl *c, uint8_t slot, int64_t now);

@@ -47,6 +47,7 @@ int lsec_sat_init(struct lsec_sat *s, const struct lsec_io *io, uint64_t uid)
 	s->io = *io;
 	s->uid = uid;
 	s->pair.key_id = PSA_KEY_ID_NULL;
+	s->session_timeout_ms = LSEC_SESSION_TIMEOUT_MS;
 	drop_session(s);
 
 	return lsec_crypto_init();
@@ -416,6 +417,39 @@ static void join_ok(struct lsec_sat *s, const struct lsec_hdr *h, const uint8_t 
 	}
 }
 
+/* A poll that has been opened: answer it if it names this satellite. */
+static void poll_rx(struct lsec_sat *s, const uint8_t *body, size_t n, int64_t now)
+{
+	uint8_t bit = 1u << (s->pairing.slot - 1);
+	uint8_t mask;
+
+	if (n < LSEC_POLL_HDR || body[1] == 0) {
+		s->stats.malformed++;
+		return;
+	}
+
+	mask = body[0];
+	if (!(mask & bit)) {
+		return;   /* not asked this time; the replay window moved anyway */
+	}
+
+	/* Only being asked keeps the session: see session_timeout_ms. */
+	s->last_rx = now;
+
+	struct lsec_event ev = {
+		.type = LSEC_EV_POLL,
+		.slot = s->pairing.slot,
+		.group = true,
+		.data = body + LSEC_POLL_HDR,
+		.len = n - LSEC_POLL_HDR,
+		.rank = __builtin_popcount(mask & (bit - 1)),
+		.count = __builtin_popcount(mask),
+		.slot_ms = body[1],
+	};
+
+	lsec_emit(&s->io, &ev);
+}
+
 static void sealed_rx(struct lsec_sat *s, const struct lsec_hdr *h, const uint8_t *buf,
 		      size_t len, int64_t now)
 {
@@ -430,8 +464,9 @@ static void sealed_rx(struct lsec_sat *s, const struct lsec_hdr *h, const uint8_
 	}
 
 	if (group) {
-		/* Only application data is broadcast. */
-		if (h->kind != KIND_DATA || !s->group.valid || h->kid != s->group.kid) {
+		/* Only polls and application data are broadcast. */
+		if ((h->kind != KIND_DATA && h->kind != KIND_POLL) || !s->group.valid ||
+		    h->kid != s->group.kid) {
 			s->stats.bad_tag++;
 			return;
 		}
@@ -450,8 +485,20 @@ static void sealed_rx(struct lsec_sat *s, const struct lsec_hdr *h, const uint8_
 		return;
 	}
 
-	s->last_rx = now;
 	s->stats.rx_ok++;
+
+	if (h->kind == KIND_POLL) {
+		poll_rx(s, body, n, now);
+		return;
+	}
+
+	/*
+	 * A broadcast proves the controller is alive, not that it still
+	 * counts this satellite in; only frames meant for it do.
+	 */
+	if (!group) {
+		s->last_rx = now;
+	}
 
 	if (h->kind == KIND_GROUP_UPDATE) {
 		if (n == GTK_BODY) {
@@ -507,7 +554,10 @@ void lsec_sat_rx(struct lsec_sat *s, const uint8_t *buf, size_t len, int64_t now
 		break;
 	case KIND_GROUP_UPDATE:
 	case KIND_DATA:
-		if (h.kind == KIND_GROUP_UPDATE && h.dst == LSEC_ADDR_GROUP) {
+	case KIND_POLL:
+		/* Key updates are per satellite, polls always broadcast. */
+		if ((h.kind == KIND_GROUP_UPDATE && h.dst == LSEC_ADDR_GROUP) ||
+		    (h.kind == KIND_POLL && h.dst != LSEC_ADDR_GROUP)) {
 			s->stats.malformed++;
 			break;
 		}
@@ -564,9 +614,20 @@ void lsec_sat_poll(struct lsec_sat *s, int64_t now)
 		return;
 	}
 
-	/* No session, or the controller has gone quiet: ask for a join. */
-	if (s->paired && (!s->joined || lsec_due(now, s->last_rx, LSEC_RX_IDLE_MS)) &&
-	    lsec_due(now, s->last_hello, LSEC_HELLO_MS)) {
+	/*
+	 * The controller has stopped asking: it is gone, or has dropped this
+	 * satellite. Let the session go and ask for a new one.
+	 */
+	if (s->joined && s->session_timeout_ms &&
+	    lsec_due(now, s->last_rx, s->session_timeout_ms)) {
+		struct lsec_event ev = {.type = LSEC_EV_LEFT, .slot = s->pairing.slot};
+
+		drop_session(s);
+		lsec_emit(&s->io, &ev);
+	}
+
+	/* No session: ask for a join. */
+	if (s->paired && !s->joined && lsec_due(now, s->last_hello, LSEC_HELLO_MS)) {
 		uint8_t buf[LINK_HDR];
 
 		lsec_link_hdr(buf, KIND_HELLO, s->pairing.net_id, s->pairing.slot,

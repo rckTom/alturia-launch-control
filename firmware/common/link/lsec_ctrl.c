@@ -18,6 +18,8 @@ enum ctrl_pair_state {
 
 #define OK_TRIES 3
 
+_Static_assert(LSEC_MAX_SATS <= 8, "a poll's mask has one bit per slot");
+
 static void tx(struct lsec_ctrl *c, const uint8_t *buf, size_t len)
 {
 	c->io.send(c->io.user, buf, len);
@@ -39,6 +41,20 @@ static bool valid_slot(uint8_t slot)
 static void peer_clear(struct lsec_ctrl_peer *peer)
 {
 	lsec_wipe(peer, sizeof(*peer));
+	peer->hs.sent = LSEC_NEVER;
+}
+
+/* End the session but keep the pairing, so the satellite can join again. */
+static void peer_drop_session(struct lsec_ctrl_peer *peer)
+{
+	peer->joined = false;
+	peer->ok_pending = false;
+	peer->gtk_pending = false;
+	peer->ok_tries = 0;
+	lsec_wipe(&peer->hs, sizeof(peer->hs));
+	lsec_wipe(&peer->tx, sizeof(peer->tx));
+	lsec_wipe(&peer->rx, sizeof(peer->rx));
+	/* Start the rejoin at once rather than after JOIN_RETRY. */
 	peer->hs.sent = LSEC_NEVER;
 }
 
@@ -97,6 +113,7 @@ int lsec_ctrl_init(struct lsec_ctrl *c, const struct lsec_io *io, uint32_t net_i
 	c->io = *io;
 	c->net_id = net_id;
 	c->pair.key_id = PSA_KEY_ID_NULL;
+	c->peer_timeout_ms = LSEC_PEER_TIMEOUT_MS;
 
 	for (uint8_t slot = 0; slot <= LSEC_MAX_SATS; slot++) {
 		peer_clear(&c->peer[slot]);
@@ -129,6 +146,19 @@ int lsec_ctrl_load(struct lsec_ctrl *c, const struct lsec_pairing *p)
 bool lsec_ctrl_joined(const struct lsec_ctrl *c, uint8_t slot)
 {
 	return valid_slot(slot) && c->peer[slot].joined;
+}
+
+uint8_t lsec_ctrl_joined_mask(const struct lsec_ctrl *c)
+{
+	uint8_t mask = 0;
+
+	for (uint8_t slot = 1; slot <= LSEC_MAX_SATS; slot++) {
+		if (c->peer[slot].joined) {
+			mask |= 1u << (slot - 1);
+		}
+	}
+
+	return mask;
 }
 
 const struct lsec_pairing *lsec_ctrl_pairing(const struct lsec_ctrl *c, uint8_t slot)
@@ -491,7 +521,7 @@ static void join_rsp(struct lsec_ctrl *c, uint8_t slot, const uint8_t *buf, size
 }
 
 static void sealed_rx(struct lsec_ctrl *c, const struct lsec_hdr *h, const uint8_t *buf,
-		      size_t len)
+		      size_t len, int64_t now)
 {
 	struct lsec_ctrl_peer *peer = &c->peer[h->src];
 	uint8_t body[LSEC_MAX_PAYLOAD];
@@ -512,6 +542,7 @@ static void sealed_rx(struct lsec_ctrl *c, const struct lsec_hdr *h, const uint8
 		return;
 	}
 
+	peer->last_rx = now;
 	c->stats.rx_ok++;
 
 	switch (h->kind) {
@@ -596,7 +627,7 @@ void lsec_ctrl_rx(struct lsec_ctrl *c, const uint8_t *buf, size_t len, int16_t r
 	case KIND_JOIN_ACK:
 	case KIND_GROUP_ACK:
 	case KIND_DATA:
-		sealed_rx(c, &h, buf, len);
+		sealed_rx(c, &h, buf, len, now);
 		break;
 	default:
 		c->stats.foreign++;
@@ -629,6 +660,37 @@ int lsec_ctrl_send(struct lsec_ctrl *c, uint8_t dst, const void *data, size_t le
 	return 0;
 }
 
+int lsec_ctrl_send_poll(struct lsec_ctrl *c, uint8_t mask, uint8_t slot_ms, const void *data,
+			size_t len)
+{
+	uint8_t body[LSEC_MAX_PAYLOAD];
+	uint8_t out[LSEC_MAX_FRAME];
+	int n;
+
+	if (mask == 0 || slot_ms == 0) {
+		return -EINVAL;
+	}
+	if (len > LSEC_MAX_POLL_PAYLOAD) {
+		return -EMSGSIZE;
+	}
+	if (!c->group.valid) {
+		return -ENOTCONN;
+	}
+
+	body[0] = mask;
+	body[1] = slot_ms;
+	memcpy(body + LSEC_POLL_HDR, data, len);
+
+	n = lsec_seal(&c->group.dir, KIND_POLL, c->net_id, LSEC_ADDR_CTRL, LSEC_ADDR_GROUP,
+		      c->group.kid, body, LSEC_POLL_HDR + len, out);
+	if (n < 0) {
+		return n;
+	}
+
+	tx(c, out, n);
+	return 0;
+}
+
 void lsec_ctrl_poll(struct lsec_ctrl *c, int64_t now)
 {
 	struct lsec_pair *p = &c->pair;
@@ -653,6 +715,15 @@ void lsec_ctrl_poll(struct lsec_ctrl *c, int64_t now)
 
 		if (!peer->paired) {
 			continue;
+		}
+
+		/* Nothing from it for too long: it is gone, or cannot hear us. */
+		if (peer->joined && c->peer_timeout_ms &&
+		    lsec_due(now, peer->last_rx, c->peer_timeout_ms)) {
+			struct lsec_event ev = {.type = LSEC_EV_LEFT, .slot = slot};
+
+			peer_drop_session(peer);
+			lsec_emit(&c->io, &ev);
 		}
 
 		if (peer->ok_pending && lsec_due(now, peer->ok_sent, LSEC_RESEND_MS)) {
