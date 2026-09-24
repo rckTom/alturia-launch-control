@@ -75,3 +75,20 @@ config LINK_LBT_MAX_DEFER_MS
 endif # LINK_LBT
 
 endmenu
+
+config RADIO_SIM
+	bool "Simulated LoRa radio (radio network simulator)"
+	default y
+	depends on ARCH_POSIX
+	help
+	  On native_sim, apps that build the LoRa transport (LSEC_RADIO) get
+	  common/lora/radio_sim.c in place of radio.c: frames go over UDP
+	  to the radio network simulator in tools/radiosim, which relays
+	  them between node instances.
+
+config RADIO_SIM_TX_DELAY_US
+	int "Simulated radio: delay from radio_send() to the frame going on air"
+	default 0
+	depends on RADIO_SIM
+	help
+	  The setup time of a real transceiver before its preamble starts.

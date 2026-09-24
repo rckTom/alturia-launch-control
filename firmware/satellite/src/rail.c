@@ -13,6 +13,8 @@ LOG_MODULE_REGISTER(rail, LOG_LEVEL_INF);
  * A few mA of unexpected current with no channel firing means a leaking
  * output, which is the fault this monitor exists to catch.
  */
+#if DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(rail_monitor))
+
 static const struct device *const monitor = DEVICE_DT_GET(DT_NODELABEL(rail_monitor));
 
 int rail_init(void)
@@ -46,3 +48,20 @@ int rail_read(int32_t *mv, int32_t *ma)
 
 	return 0;
 }
+
+#else /* No INA226 (native_sim): a charged, quiet rail. */
+
+int rail_init(void)
+{
+	LOG_WRN("no rail monitor, reading a quiet rail");
+	return 0;
+}
+
+int rail_read(int32_t *mv, int32_t *ma)
+{
+	*mv = 12000;
+	*ma = 0;
+	return 0;
+}
+
+#endif

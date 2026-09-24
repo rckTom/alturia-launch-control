@@ -33,7 +33,7 @@ static uint32_t rand_between(uint32_t lo, uint32_t hi)
  * Semtech's time-on-air formula (SX1261/2 datasheet 6.1.4), counted in
  * quarter symbols so it stays in integers.
  */
-uint32_t link_airtime_ms(size_t len, unsigned int sf, unsigned int bw_khz)
+uint32_t link_airtime_us(size_t len, unsigned int sf, unsigned int bw_khz)
 {
 	bool ldro = sf >= 11 && bw_khz <= 125;
 	int bits = 8 * (int)len - 4 * (int)sf + 16;   /* payload plus CRC */
@@ -55,7 +55,12 @@ uint32_t link_airtime_ms(size_t len, unsigned int sf, unsigned int bw_khz)
 	quarters = preamble_q + 4 * (8 + blocks * (CODING_RATE + 4));
 	us = (quarters * ((uint64_t)1 << sf) * 1000) / (4 * (uint64_t)bw_khz);
 
-	return (uint32_t)((us + 999) / 1000);
+	return (uint32_t)us;
+}
+
+uint32_t link_airtime_ms(size_t len, unsigned int sf, unsigned int bw_khz)
+{
+	return (link_airtime_us(len, sf, bw_khz) + 999) / 1000;
 }
 
 int link_slot_ms(uint32_t reply_airtime_ms)

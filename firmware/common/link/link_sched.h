@@ -56,6 +56,8 @@
  * hardware; this is for the simulator and the tests.
  */
 uint32_t link_airtime_ms(size_t len, unsigned int sf, unsigned int bw_khz);
+/* The same in microseconds, unrounded. */
+uint32_t link_airtime_us(size_t len, unsigned int sf, unsigned int bw_khz);
 
 /*
  * The length of one reply slot for replies that take @p reply_airtime_ms,

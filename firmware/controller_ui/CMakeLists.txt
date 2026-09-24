@@ -32,3 +32,9 @@ endif()
 include(${CMAKE_CURRENT_SOURCE_DIR}/../common/link/link_sec.cmake)
 
 target_sources_ifdef(CONFIG_APP_SAT_SIM app PRIVATE src/sat_sim.c)
+
+# A node of the radio network simulator (radiosim.conf, radiosim.overlay):
+# the screen and the controls live in the simulator's web UI.
+if(LSEC_RADIO_SIM)
+	target_sources(app PRIVATE src/sim_display.c src/sim_panel.c)
+endif()

@@ -32,6 +32,19 @@ source ~/Tools/zephyrproject/venv/bin/activate
 west build -b nucleo_g474re --shield semtech_sx1262mb2das -p always .
 ```
 
+The hardware-only settings (LoRa module, USB console) are in
+[`boards/nucleo_g474re.conf`](boards/nucleo_g474re.conf).
+
+It also builds for `native_sim/native/64`, as a node of the radio network
+simulator ([`tools/radiosim`](../../tools/radiosim/README.md)). There the
+radio is `common/lora/radio_sim.c`. The outputs, LEDs and button are
+emulated GPIOs that the simulator's web UI shows and presses
+([`boards/native_sim.overlay`](boards/native_sim.overlay)):
+
+```sh
+west build -b native_sim/native/64 -d build-sim .
+```
+
 ## Link
 
 The LoRa link is the shared secure link in

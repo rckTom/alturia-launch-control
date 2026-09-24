@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Display that exists only in the radio network simulator's web UI
+  (tools/radiosim). Frames go there over the simulated radio's socket,
+  see src/sim_display.c.
+
+compatible: "zephyr,sim-display"
+
+include: display-controller.yaml
+
+properties:
+  pixel-format:
+    type: int
+    required: true
+    description: Initial pixel format, 1-bit only.
+    enum:
+      - 2 # PANEL_PIXEL_FORMAT_MONO01
+      - 4 # PANEL_PIXEL_FORMAT_MONO10

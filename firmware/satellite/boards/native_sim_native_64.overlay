@@ -1,0 +1,2 @@
+/* 64-bit native_sim uses the same setup. */
+#include "native_sim.overlay"

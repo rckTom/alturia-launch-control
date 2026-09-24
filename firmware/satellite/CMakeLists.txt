@@ -17,3 +17,8 @@ target_sources(app PRIVATE
 set(LSEC_LINK sat)
 set(LSEC_RADIO ON)
 include(${CMAKE_CURRENT_SOURCE_DIR}/../common/link/link_sec.cmake)
+
+# native_sim: LEDs and pairing button in the radio network simulator's UI.
+if(LSEC_RADIO_SIM)
+	target_sources(app PRIVATE src/sim_io.c)
+endif()

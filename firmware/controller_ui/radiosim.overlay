@@ -1,0 +1,36 @@
+/*
+ * The controller as a node of the radio network simulator (tools/radiosim):
+ * no SDL window, the screen goes to the simulator's web UI, and its keys
+ * come back from there onto the same gpio0 pins the SDL keyboard drives
+ * in boards/native_sim.overlay. Use together with radiosim.conf.
+ */
+
+#include <zephyr/dt-bindings/display/panel.h>
+
+&sdl_dc {
+	status = "disabled";
+};
+
+&input_sdl_touch {
+	status = "disabled";
+};
+
+&gpio0 {
+	sdl_gpio {
+		status = "disabled";
+	};
+};
+
+/ {
+	chosen {
+		/delete-property/ zephyr,touch;
+		zephyr,display = &sim_display;
+	};
+
+	sim_display: sim_display {
+		compatible = "zephyr,sim-display";
+		width = <400>;
+		height = <240>;
+		pixel-format = <PANEL_PIXEL_FORMAT_MONO01>;
+	};
+};

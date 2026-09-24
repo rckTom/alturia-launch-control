@@ -1,0 +1,128 @@
+:root {
+  --bg: #0d1117;
+  --panel: #151b23;
+  --panel-2: #1c2430;
+  --line: #2a3441;
+  --text: #d6dde6;
+  --muted: #8b98a8;
+  --accent: #3b82f6;
+  --danger: #ef4444;
+  --ok: #22c55e;
+  --warn: #eab308;
+  --mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 3px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+button:hover {
+  border-color: var(--accent);
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+  border-color: var(--line);
+}
+button.primary {
+  background: #1d4ed8;
+  border-color: #2563eb;
+}
+button.danger {
+  border-color: #7f1d1d;
+}
+button.danger:hover {
+  background: #7f1d1d;
+}
+button.on {
+  background: #1e3a5f;
+  border-color: var(--accent);
+}
+
+input,
+select {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 2px 6px;
+  min-width: 0;
+}
+input[type='number'] {
+  width: 70px;
+}
+input[type='checkbox'] {
+  accent-color: var(--accent);
+}
+
+.muted {
+  color: var(--muted);
+}
+.mono {
+  font-family: var(--mono);
+}
+.row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+.grid2 {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 10px;
+  align-items: center;
+}
+table.small {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+table.small th,
+table.small td {
+  text-align: left;
+  padding: 2px 6px 2px 0;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+table.small th {
+  color: var(--muted);
+  font-weight: 500;
+}
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  vertical-align: middle;
+}

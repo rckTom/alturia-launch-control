@@ -16,6 +16,7 @@ a welded relay or a failed MOSFET — can fire an igniter on its own.
 | [firmware/controller_ui/](firmware/controller_ui/) | Zephyr application for the operator console UI (LVGL, currently built for `native_sim`) |
 | [firmware/common/lora/](firmware/common/lora/) | LoRa radio backend shared by console and satellite |
 | [firmware/lora_bench/](firmware/lora_bench/) | Ping/pong link test on two Heltec WiFi LoRa 32 V4 boards |
+| [tools/radiosim/](tools/radiosim/) | Radio network simulator: `native_sim` controllers and satellites over a simulated channel, with a web UI |
 | [src/launch_controller/](src/launch_controller/) | Python package — placeholder |
 
 ## Status
@@ -47,3 +48,7 @@ Console firmware, against a Zephyr tree already set up with west:
 ```sh
 west build -b native_sim firmware/controller_ui && ./build/zephyr/zephyr.exe
 ```
+
+Several controllers and satellites on one simulated radio channel, with a web
+UI for the map, the packet timeline, shells, jamming and replay: see
+[tools/radiosim/README.md](tools/radiosim/README.md).

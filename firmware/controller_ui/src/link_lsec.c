@@ -17,6 +17,8 @@
 
 #ifdef CONFIG_APP_SAT_SIM
 #include "sat_sim.h"
+#else
+#include "radio.h"
 #endif
 
 LOG_MODULE_REGISTER(link, LOG_LEVEL_INF);
@@ -82,6 +84,13 @@ int link_init(void)
 #ifdef CONFIG_APP_SAT_SIM
 	return ctrl_link_init(on_event, sat_sim_transport());
 #else
+	/* The controller's LoRa module has no external front-end. */
+	int ret = radio_init(NULL);
+
+	if (ret) {
+		LOG_ERR("radio init: %d", ret);
+		return ret;
+	}
 	return ctrl_link_init(on_event, &link_radio_transport);
 #endif
 }
