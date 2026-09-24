@@ -15,8 +15,20 @@ target_sources(app PRIVATE
 	src/ui.c
 	src/inputs.c
 	src/shell_cmds.c
+	src/link_lsec.c
+	src/link_wire.c
+	src/fonts/ui_font_18.c
+	src/fonts/ui_font_20.c
+	src/fonts/ui_font_28.c
 )
 
-# The satellite simulator stands in for the LoRa link. A hardware build
-# would replace it with a real link implementation behind the same link.h.
+# The controller's end of the secure link (../common/link). The satellite
+# simulator stands in for the LoRa radio and the satellites; without it the
+# link runs over the radio.
+set(LSEC_LINK ctrl)
+if(NOT CONFIG_APP_SAT_SIM)
+	set(LSEC_RADIO ON)
+endif()
+include(${CMAKE_CURRENT_SOURCE_DIR}/../common/link/link_sec.cmake)
+
 target_sources_ifdef(CONFIG_APP_SAT_SIM app PRIVATE src/sat_sim.c)

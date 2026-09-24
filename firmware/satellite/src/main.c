@@ -5,13 +5,44 @@
 #include <zephyr/settings/settings.h>
 #include <stdbool.h>
 
+#include "radio.h"
+#include "sat_link.h"
 #include "satellite.h"
 
 LOG_MODULE_REGISTER(satellite, LOG_LEVEL_INF);
 
+/* Runs on the link thread. */
+static void on_link_event(const struct lsec_event *ev)
+{
+	switch (ev->type) {
+	case LSEC_EV_SAS:
+		pair_ui_show(ev->sas);
+		break;
+	case LSEC_EV_PAIRED:
+		pair_ui_show(NULL);
+		LOG_INF("paired as slot %u", ev->slot);
+		break;
+	case LSEC_EV_PAIR_FAILED:
+		pair_ui_show(NULL);
+		LOG_WRN("pairing failed (%d)", ev->reason);
+		break;
+	case LSEC_EV_JOINED:
+		LOG_INF("session with the console up");
+		break;
+	case LSEC_EV_DATA:
+		/* Command dispatch lives here; the real protocol is the
+		 * console's, and is not part of the size experiment. Only
+		 * authenticated, fresh frames from our console get this far.
+		 */
+		LOG_DBG("%s frame, %u bytes", ev->group ? "group" : "unicast", (unsigned)ev->len);
+		break;
+	default:
+		break;
+	}
+}
+
 int main(void)
 {
-	uint8_t frame[64];
 	const int32_t leak_threshold_ma = 10;
 	int ret;
 
@@ -19,11 +50,6 @@ int main(void)
 	if (ret) {
 		LOG_ERR("settings init: %d", ret);
 		return ret;
-	}
-
-	ret = keys_load();
-	if (ret) {
-		LOG_WRN("no session key provisioned (%d), link stays closed", ret);
 	}
 
 	ret = channels_init();
@@ -38,7 +64,20 @@ int main(void)
 		return ret;
 	}
 
-	ret = link_init();
+	ret = pair_ui_init();
+	if (ret) {
+		LOG_ERR("pairing UI init: %d", ret);
+		return ret;
+	}
+
+	/* The RA-01SH switches its own RF path from DIO2: no front-end. */
+	ret = radio_init(NULL);
+	if (ret) {
+		LOG_ERR("radio init: %d", ret);
+		return ret;
+	}
+
+	ret = sat_link_init(on_link_event, &link_radio_transport);
 	if (ret) {
 		LOG_ERR("link init: %d", ret);
 		return ret;
@@ -47,27 +86,9 @@ int main(void)
 	LOG_INF("satellite up, %d channels", SAT_CHANNELS);
 
 	while (true) {
-		size_t len = sizeof(frame);
-
-		ret = link_recv(frame, len, 1000);
-		if (ret <= 0) {
-			continue;
-		}
-
-		uint8_t plain[64];
-		size_t plain_len = sizeof(plain);
-
-		if (keys_unseal(frame, ret, plain, &plain_len) != 0) {
-			LOG_WRN("dropped unauthenticated frame");
-			continue;
-		}
-
-		/* Command dispatch lives here; the real protocol is the
-		 * console's, and is not part of the size experiment.
-		 */
-		LOG_DBG("frame accepted, %u bytes", (unsigned)plain_len);
-
 		int32_t rail_mv, rail_ma;
+
+		k_sleep(K_MSEC(100));
 
 		if (rail_read(&rail_mv, &rail_ma) == 0 && rail_ma > leak_threshold_ma) {
 			LOG_ERR("rail leaking %d mA with no channel firing", rail_ma);

@@ -12,6 +12,7 @@
 #include <lvgl.h>
 
 #include "controller.h"
+#include "link.h"
 #include "pads.h"
 #include "ui.h"
 
@@ -36,6 +37,10 @@ int main(void)
 	}
 
 	(void)pads_init();
+	/* After pads_init(), which brings up the settings subsystem */
+	if (link_init()) {
+		LOG_ERR("secure link failed to start");
+	}
 	ui_init();
 	lv_timer_create(ctrl_timer_cb, CTRL_PERIOD_MS, NULL);
 	display_blanking_off(display);

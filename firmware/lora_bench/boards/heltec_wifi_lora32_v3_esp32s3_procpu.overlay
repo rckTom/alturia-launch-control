@@ -1,0 +1,32 @@
+/*
+ * Heltec WiFi LoRa 32 V4 on top of Zephyr's V3 board.
+ *
+ * Zephyr has no V4 board. The V4 keeps the V3's ESP32-S3, SX1262 wiring
+ * (SPI, BUSY, DIO1, reset, DIO2 RF switch, 1.8 V TCXO on DIO3), LED and
+ * PRG button, and changes two things that matter here:
+ *
+ *  - USB-C goes to the ESP32-S3's own USB Serial/JTAG instead of a
+ *    CP2102, so the console moves off uart0.
+ *  - A PA/LNA front-end sits between the SX1262 and the antenna. Its
+ *    control pins are listed below and driven by src/heltec_v4_fem.c.
+ *
+ * The V4 has 16 MB of flash; the V3's 8 MB layout is used as it is.
+ */
+
+/ {
+	chosen {
+		zephyr,console = &usb_serial;
+		zephyr,shell-uart = &usb_serial;
+	};
+
+	zephyr,user {
+		fem-power-gpios = <&gpio0 7 GPIO_ACTIVE_HIGH>;			/* VFEM_Ctrl */
+		fem-csd-gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>;			/* PA_CSD */
+		fem-gc1109-cps-gpios = <&gpio1 14 GPIO_ACTIVE_HIGH>;		/* IO46, V4.2 */
+		fem-kct8103l-ctx-gpios = <&gpio0 5 GPIO_ACTIVE_HIGH>;		/* IO5, V4.3 */
+	};
+};
+
+&usb_serial {
+	status = "okay";
+};

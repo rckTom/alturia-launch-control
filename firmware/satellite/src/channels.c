@@ -127,6 +127,17 @@ int channels_arm(int ch, bool on)
 	return gpio_pin_set_dt(&enable_high[ch], on);
 }
 
+bool channels_all_safe(void)
+{
+	for (int i = 0; i < SAT_CHANNELS; i++) {
+		if (armed[i]) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
 int channels_fire(int ch, uint32_t ms)
 {
 	int ret;

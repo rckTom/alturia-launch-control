@@ -25,23 +25,35 @@ drivers are compiled and exercised:
 | ADS124S08 | SPI2 | 24-bit continuity measurement |
 | MCP3208 | SPI2 | 12-bit rail dividers |
 | INA226 | I2C1 | Fire-rail current across the 2 mΩ shunt |
-| USB FS | — | Key provisioning over CDC ACM |
+| USB FS | — | Console over CDC ACM |
 
 ```sh
 source ~/Tools/zephyrproject/venv/bin/activate
 west build -b nucleo_g474re --shield semtech_sx1262mb2das -p always .
 ```
 
+## Link
+
+The LoRa link is the shared secure link in
+[`../common/link/`](../common/link/) (spec:
+[`design/radio_security.md`](../../design/radio_security.md)). A new
+satellite pairs with the console over the air: hold the user button (the
+continuity button on the real board) for 5 s with every channel SAFE, compare
+the pattern on the channel LEDs with the console's, and press the button
+if they match. The Nucleo has no channel LEDs, so the pattern is also in the
+log, and `sat pair confirm` / `sat pair reject` answer from the shell.
+`sat link` shows the link state; `sat unpair` forgets the console.
+
 ## Footprint
 
 The point of the skeleton. With shell, logging, USB CDC, ZMS-backed settings,
-PSA crypto (AES-GCM, HMAC-SHA256, ECDSA P-256, ECDH) and every external
-driver enabled:
+the secure link (PSA: AES-CCM, HMAC/HKDF-SHA256, ECDH P-256, and the link
+thread) and every external driver enabled:
 
 | | Used | Region | |
 |---|---|---|---|
-| FLASH | 164 KB | 512 KB | 31% |
-| RAM | 45 KB | 128 KB | 35% |
+| FLASH | 179 KB | 512 KB | 34% |
+| RAM | 56 KB | 128 KB | 43% |
 
 That is the stack floor, not the finished firmware — the application logic on
 top is small by comparison.

@@ -1,0 +1,72 @@
+/*
+ * ESP32-S3-DevKitC-1 with a bare 400x240 Sharp Memory LCD (LS027B7DH01)
+ * on SPI2, for trying the UI on a real panel. There are no controls yet:
+ * drive it with the "ctrl" and "sat" shell commands on the native USB port
+ * (USB Serial/JTAG, the board's "USB" connector). Boot messages and logs
+ * stay on uart0, the "UART" connector.
+ *
+ *   Panel   ESP32-S3   Note
+ *   SCLK    IO45
+ *   SI/DI   IO48
+ *   SCS     IO47       active high, so it is driven as a plain GPIO
+ *   VDD     3V3        5V on the Adafruit breakout
+ *   GND     GND
+ *
+ * EXTCOMIN and DISP are left unconnected. Without EXTCOMIN the panel still
+ * needs its VCOM inverted or it degrades, so the driver sends the inversion
+ * over SPI instead (serial-vcom-inversion), and DISP is assumed tied high
+ * on the breakout, which is why display_blanking_off() only warns here.
+ */
+
+#include <zephyr/dt-bindings/gpio/gpio.h>
+#include <zephyr/dt-bindings/pinctrl/esp32s3-pinctrl.h>
+
+/ {
+	chosen {
+		zephyr,display = &sharp_lcd;
+		zephyr,shell-uart = &usb_serial;
+	};
+};
+
+&usb_serial {
+	status = "okay";
+};
+
+&pinctrl {
+	/* Replaces the board's spim2_default; the panel is write-only, so
+	 * there is no MISO, and CS is a GPIO rather than the SPI peripheral's.
+	 */
+	spim2_lcd: spim2_lcd {
+		group1 {
+			pinmux = <SPIM2_SCLK_GPIO45>;
+		};
+
+		group2 {
+			pinmux = <SPIM2_MOSI_GPIO48>;
+			output-low;
+		};
+	};
+};
+
+&spi2 {
+	status = "okay";
+	pinctrl-0 = <&spim2_lcd>;
+	pinctrl-names = "default";
+	cs-gpios = <&gpio1 15 GPIO_ACTIVE_HIGH>;	/* IO47 */
+
+	sharp_lcd: ls0xx@0 {
+		compatible = "sharp,ls0xx";
+		reg = <0>;
+		/* The panel is rated 2 MHz; the flying leads of a breadboard
+		 * setup will not do much better anyway.
+		 */
+		spi-max-frequency = <2000000>;
+		width = <400>;
+		height = <240>;
+		serial-vcom-inversion;
+	};
+};
+
+/* IO45 is a strapping pin (VDD_SPI voltage) and IO48 drives the on-board
+ * RGB LED on DevKitC-1 v1.0. Neither matters once the board has booted.
+ */

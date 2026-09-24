@@ -1,7 +1,9 @@
 /*
  * Shell commands for driving the test bench:
- *   ctrl ...  controller-side inputs, same as the physical controls
- *   sat ...   fault injection into the simulated satellites
+ *   ctrl ...  controller-side inputs, same as the physical controls;
+ *             "ctrl kbd" turns the terminal into the control panel
+ *   sat ...   fault injection into the simulated satellites, and their
+ *             side of pairing (the button gesture and confirmation)
  */
 
 #include <ctype.h>
@@ -103,7 +105,119 @@ DEFINE_CTRL_BUTTON(safe, CTRL_REQ_SAFE)
 DEFINE_CTRL_BUTTON(fill, CTRL_REQ_FILL)
 DEFINE_CTRL_BUTTON(vent, CTRL_REQ_VENT)
 
+/*
+ * Keyboard mode: raw terminal input drives the controls directly, like the
+ * keyboard of the native_sim build. A terminal only sends key presses, never
+ * releases, so the FIRE button and the long push cannot be held: space
+ * toggles FIRE and "e" stands in for the long push.
+ */
+static const char kbd_help[] =
+	"Keyboard mode, q or Ctrl-C to leave\n"
+	"  Up/Down  encoder    Enter  push    e  long push\n"
+	"  k  arm key (toggle) a  ARM         s  SAFE\n"
+	"  f  FILL             v  VENT        Space  FIRE (toggle)";
+
+static enum { KBD_NORMAL, KBD_ESC, KBD_CSI } kbd_state;
+static bool kbd_last_cr;
+
+static void kbd_leave(const struct shell *sh)
+{
+	/* Never leave FIRE held behind */
+	inputs_set_fire(false);
+	shell_set_bypass(sh, NULL, NULL);
+	shell_print(sh, "keyboard mode off");
+}
+
+static void kbd_key(const struct shell *sh, uint8_t c)
+{
+	switch (c) {
+	case 'k':
+		inputs_set_key(!inputs_key_on());
+		shell_print(sh, "controller key %s", inputs_key_on() ? "ON" : "OFF");
+		break;
+	case ' ':
+		inputs_set_fire(!inputs_fire_held());
+		shell_print(sh, "FIRE %s", inputs_fire_held() ? "held" : "released");
+		break;
+	case 'a':
+		ctrl_post(CTRL_REQ_ARM, 0);
+		break;
+	case 's':
+		ctrl_post(CTRL_REQ_SAFE, 0);
+		break;
+	case 'f':
+		ctrl_post(CTRL_REQ_FILL, 0);
+		break;
+	case 'v':
+		ctrl_post(CTRL_REQ_VENT, 0);
+		break;
+	case 'e':
+		ctrl_post(CTRL_REQ_EDIT, 0);
+		break;
+	case '\r':
+	case '\n':
+		ctrl_post(CTRL_REQ_SELECT, 0);
+		break;
+	default:
+		break;
+	}
+}
+
+static void kbd_bypass(const struct shell *sh, uint8_t *data, size_t len, void *user_data)
+{
+	ARG_UNUSED(user_data);
+
+	for (size_t i = 0; i < len; i++) {
+		uint8_t c = data[i];
+
+		/* Arrow keys: ESC [ A/B, or ESC O A/B in application cursor mode */
+		if (kbd_state == KBD_ESC) {
+			kbd_state = (c == '[' || c == 'O') ? KBD_CSI : KBD_NORMAL;
+			continue;
+		}
+		if (kbd_state == KBD_CSI) {
+			/* Parameter bytes end at the final byte, 0x40..0x7e */
+			if (c < 0x40 || c > 0x7e) {
+				continue;
+			}
+			kbd_state = KBD_NORMAL;
+			if (c == 'A' || c == 'B') {
+				ctrl_post(CTRL_REQ_CURSOR, c == 'A' ? -1 : 1);
+			}
+			continue;
+		}
+
+		/* One select for CR LF */
+		if (c == '\n' && kbd_last_cr) {
+			kbd_last_cr = false;
+			continue;
+		}
+		kbd_last_cr = (c == '\r');
+
+		if (c == 0x1b) {
+			kbd_state = KBD_ESC;
+		} else if (c == 'q' || c == 0x03) {
+			kbd_leave(sh);
+			return;
+		} else {
+			kbd_key(sh, c);
+		}
+	}
+}
+
+static int cmd_ctrl_kbd(const struct shell *sh, size_t argc, char **argv)
+{
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+	kbd_state = KBD_NORMAL;
+	kbd_last_cr = false;
+	shell_print(sh, "%s", kbd_help);
+	shell_set_bypass(sh, kbd_bypass, NULL);
+	return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(ctrl_cmds,
+	SHELL_CMD(kbd, NULL, "Keyboard mode: drive the controls with single keys", cmd_ctrl_kbd),
 	SHELL_CMD_ARG(key, NULL, "Controller arm key <on|off>", cmd_ctrl_key, 2, 0),
 	SHELL_CMD_ARG(select, NULL, "Toggle pad selection <1-7>", cmd_ctrl_select, 2, 0),
 	SHELL_CMD_ARG(turn, NULL, "Turn the encoder <steps, negative is up>", cmd_ctrl_turn, 2, 0),
@@ -176,6 +290,42 @@ static int cmd_sat_status(const struct shell *sh, size_t argc, char **argv)
 		return 0;                                                           \
 	}
 
+static int cmd_sat_pair(const struct shell *sh, size_t argc, char **argv)
+{
+	int sat = parse_sat(sh, argv[1]);
+
+	ARG_UNUSED(argc);
+	if (sat < 0) {
+		return sat;
+	}
+	sat_sim_pair(sat);
+	return 0;
+}
+
+static int cmd_sat_confirm(const struct shell *sh, size_t argc, char **argv)
+{
+	int sat = parse_sat(sh, argv[1]);
+
+	ARG_UNUSED(argc);
+	if (sat < 0) {
+		return sat;
+	}
+	sat_sim_pair_confirm(sat, argv[0][0] == 'c');
+	return 0;
+}
+
+static int cmd_sat_unpair(const struct shell *sh, size_t argc, char **argv)
+{
+	int sat = parse_sat(sh, argv[1]);
+
+	ARG_UNUSED(argc);
+	if (sat < 0) {
+		return sat;
+	}
+	sat_sim_unpair(sat);
+	return 0;
+}
+
 DEFINE_SAT_BOOL(link, sat_sim_set_link)
 DEFINE_SAT_BOOL(key, sat_sim_set_key)
 DEFINE_SAT_BOOL(estop, sat_sim_set_estop)
@@ -229,6 +379,12 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sat_cmds,
 	SHELL_CMD_ARG(estop, NULL, "Pad E-STOP <a|b> <on|off>", cmd_sat_estop, 3, 0),
 	SHELL_CMD_ARG(res, NULL, "Channel load <a|b> <1-6> <mOhm|open>", cmd_sat_res, 4, 0),
 	SHELL_CMD_ARG(vbat, NULL, "Pack voltage <a|b> <mV>", cmd_sat_vbat, 3, 0),
+	SHELL_CMD_ARG(pair, NULL, "Pairing gesture: enter pairing mode <a|b>", cmd_sat_pair, 2, 0),
+	SHELL_CMD_ARG(confirm, NULL, "Satellite user: LEDs match the controller <a|b>",
+		      cmd_sat_confirm, 2, 0),
+	SHELL_CMD_ARG(reject, NULL, "Satellite user: LEDs differ <a|b>", cmd_sat_confirm, 2, 0),
+	SHELL_CMD_ARG(unpair, NULL, "Satellite forgets its controller <a|b>", cmd_sat_unpair, 2,
+		      0),
 	SHELL_SUBCMD_SET_END
 );
 SHELL_CMD_REGISTER(sat, &sat_cmds, "Simulated satellites", NULL);

@@ -596,6 +596,169 @@ static void setup_handle(const struct ctrl_req *req)
 	}
 }
 
+static const char *pair_fail_text(enum lsec_fail reason)
+{
+	switch (reason) {
+	case LSEC_FAIL_TIMEOUT:
+		return "timed out";
+	case LSEC_FAIL_REJECTED:
+		return "cancelled";
+	case LSEC_FAIL_PEER_ABORT:
+		return "cancelled on the satellite";
+	case LSEC_FAIL_COMMITMENT:
+	case LSEC_FAIL_CHECK:
+		return "keys did not match, someone may be interfering";
+	case LSEC_FAIL_STORE:
+		return "could not store the key";
+	default:
+		return "crypto error";
+	}
+}
+
+static void pair_open(int sat)
+{
+	v.pair = (struct pair_view){
+		.active = true,
+		.phase = PAIR_SCAN,
+		.sat = sat,
+	};
+	link_scan(true);
+	message(MSG_INFO, "Hold the pairing button on the satellite for 5 s");
+}
+
+static void pair_close(void)
+{
+	link_scan(false);
+	v.pair.active = false;
+}
+
+/* While the pairing screen is open it consumes every request */
+static void pair_handle(const struct ctrl_req *req)
+{
+	struct pair_view *pv = &v.pair;
+
+	switch (req->type) {
+	case CTRL_REQ_CURSOR:
+		if (pv->phase == PAIR_SCAN && pv->found > 0) {
+			pv->cursor = CLAMP(pv->cursor + req->arg, 0, pv->found - 1);
+		}
+		break;
+	case CTRL_REQ_SELECT:
+		if (pv->phase == PAIR_SCAN && pv->found > 0) {
+			if (link_pair(pv->sat, pv->uid[pv->cursor]) == 0) {
+				pv->phase = PAIR_WAIT;
+			}
+		} else if (pv->phase == PAIR_COMPARE) {
+			link_pair_confirm(true);
+			pv->phase = PAIR_CONFIRMED;
+		}
+		break;
+	case CTRL_REQ_SAFE:
+		/* Back out; past the scan this also tells the satellite */
+		if (pv->phase != PAIR_SCAN) {
+			link_pair_confirm(false);
+		}
+		pair_close();
+		message(MSG_INFO, "Pairing satellite %c cancelled", sat_name(pv->sat));
+		break;
+	default:
+		message(MSG_WARN, "Finish pairing first (SAFE to cancel)");
+		break;
+	}
+}
+
+/* Pairing progress from the link */
+static void pair_events(void)
+{
+	struct link_pair_event ev;
+	struct pair_view *pv = &v.pair;
+
+	while (link_pair_event(&ev)) {
+		switch (ev.type) {
+		case LSEC_EV_ADV: {
+			int i = 0;
+
+			if (!pv->active || pv->phase != PAIR_SCAN) {
+				break;
+			}
+			while (i < pv->found && pv->uid[i] != ev.uid) {
+				i++;
+			}
+			if (i == pv->found) {
+				if (pv->found == PAIR_MAX_FOUND) {
+					break;
+				}
+				pv->found++;
+				pv->uid[i] = ev.uid;
+			}
+			pv->rssi_dbm[i] = ev.rssi_dbm;
+			break;
+		}
+		case LSEC_EV_SAS:
+			if (pv->active && ev.sat == pv->sat) {
+				char rows[LSEC_SAS_FRAMES][LSEC_SAS_LEDS + 1];
+
+				memcpy(pv->sas, ev.sas, sizeof(pv->sas));
+				pv->phase = PAIR_COMPARE;
+
+				for (int r = 0; r < LSEC_SAS_FRAMES; r++) {
+					for (int i = 0; i < LSEC_SAS_LEDS; i++) {
+						rows[r][i] = (ev.sas[r] & BIT(i)) ? '#' : '.';
+					}
+					rows[r][LSEC_SAS_LEDS] = '\0';
+				}
+				LOG_INF("pairing satellite %c, compare  1 %s  2 %s  3 %s  4 %s",
+					sat_name(pv->sat), rows[0], rows[1], rows[2], rows[3]);
+			}
+			break;
+		case LSEC_EV_PAIRED:
+			pair_close();
+			message(MSG_INFO, "Satellite %c paired", sat_name(ev.sat));
+			break;
+		case LSEC_EV_PAIR_FAILED:
+			if (pv->active) {
+				pair_close();
+				message(MSG_WARN, "Pairing satellite %c failed: %s", sat_name(pv->sat),
+					pair_fail_text(ev.reason));
+			}
+			break;
+		default:
+			break;
+		}
+	}
+}
+
+/* While the satellites screen is open it consumes every request */
+static void sats_handle(const struct ctrl_req *req)
+{
+	int sat = v.sats.cursor;
+
+	switch (req->type) {
+	case CTRL_REQ_CURSOR:
+		v.sats.cursor = CLAMP(sat + req->arg, 0, NUM_SATS - 1);
+		break;
+	case CTRL_REQ_SELECT:
+		pair_open(sat);
+		break;
+	case CTRL_REQ_EDIT:
+		/* Hold: forget. Its pads stay configured, but lose their link. */
+		if (!v.sat[sat].uid) {
+			message(MSG_WARN, "Satellite %c is not paired", sat_name(sat));
+		} else if (link_forget(sat)) {
+			message(MSG_WARN, "Satellite %c: could not erase the key", sat_name(sat));
+		} else {
+			message(MSG_INFO, "Satellite %c forgotten", sat_name(sat));
+		}
+		break;
+	case CTRL_REQ_SAFE:
+		v.sats.active = false;
+		break;
+	default:
+		message(MSG_WARN, "Leave the settings first (SAFE)");
+		break;
+	}
+}
+
 static void settings_open(void)
 {
 	if (v.state != CTRL_SAFE) {
@@ -617,10 +780,15 @@ static void settings_handle(const struct ctrl_req *req)
 {
 	switch (req->type) {
 	case CTRL_REQ_CURSOR:
-		v.settings.cursor = CLAMP(v.settings.cursor + req->arg, 0, NUM_PADS - 1);
+		v.settings.cursor =
+			CLAMP(v.settings.cursor + req->arg, SETTINGS_SATS, NUM_PADS - 1);
 		break;
 	case CTRL_REQ_SELECT:
-		setup_open(v.settings.cursor);
+		if (v.settings.cursor == SETTINGS_SATS) {
+			v.sats.active = true;
+		} else {
+			setup_open(v.settings.cursor);
+		}
 		break;
 	case CTRL_REQ_EDIT:
 	case CTRL_REQ_SAFE:
@@ -642,6 +810,14 @@ static void drain_requests(void)
 				v.fault_active = false;
 				message(MSG_INFO, "Fault acknowledged");
 			}
+			continue;
+		}
+		if (v.pair.active) {
+			pair_handle(&req);
+			continue;
+		}
+		if (v.sats.active) {
+			sats_handle(&req);
 			continue;
 		}
 		if (v.setup.active) {
@@ -844,6 +1020,8 @@ void ctrl_tick(void)
 		struct sat_view *s = &v.sat[sat];
 		int64_t rx = link_last_status(sat, &s->st);
 
+		s->uid = link_paired_uid(sat);
+		s->joined = link_joined(sat);
 		s->have_status = rx >= 0;
 		s->link_ok = s->have_status && now - rx < LINK_TIMEOUT_MS;
 
@@ -880,6 +1058,7 @@ void ctrl_tick(void)
 		fix_cursor();
 	}
 
+	pair_events();
 	drain_requests();
 
 	switch (v.state) {

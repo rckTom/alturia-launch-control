@@ -9,22 +9,22 @@
 
 #define SAT_CHANNELS 6
 
-/* Session key material, loaded from the storage partition at boot and
- * replaced over USB at the start of an event.
+/*
+ * The secure LoRa link to the console is ../common/link/sat_link.h. This
+ * is its local half: the pairing gesture on the button, the pattern on the
+ * channel LEDs, and the confirmation. See design/radio_security.md.
  */
-int keys_load(void);
-int keys_provision(const uint8_t *key, size_t len);
-int keys_seal(const uint8_t *plain, size_t len, uint8_t *out, size_t *out_len);
-int keys_unseal(const uint8_t *sealed, size_t len, uint8_t *out, size_t *out_len);
-
-/* LoRa link to the operator console. */
-int link_init(void);
-int link_send(const uint8_t *buf, size_t len);
-int link_recv(uint8_t *buf, size_t len, int32_t timeout_ms);
+int pair_ui_init(void);
+/* Start pairing mode, if the satellite is SAFE. */
+int pair_ui_start(void);
+/* Show the pattern to compare, or stop showing it (sas == NULL). */
+void pair_ui_show(const uint8_t *sas);
 
 /* Pyro channels: high-side enable, low-side fire, continuity sense. */
 int channels_init(void);
 int channels_arm(int ch, bool on);
+/* No channel armed: the state in which pairing is allowed. */
+bool channels_all_safe(void);
 int channels_fire(int ch, uint32_t ms);
 int channels_continuity(int ch, int32_t *mv);
 int channels_rail_mv(int input, int32_t *mv);

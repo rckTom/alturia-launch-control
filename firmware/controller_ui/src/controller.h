@@ -11,9 +11,10 @@
  *
  * In SAFE, a long select opens the settings screen, which lists all pads
  * including OFF ones; the main list only shows enabled pads. Selecting a
- * pad there opens its setup screen. While either is open, the encoder and
- * keypad act on it, SAFE backs out one level, and ARM, FILL and VENT are
- * refused.
+ * pad there opens its setup screen. Turning above the first pad reaches
+ * the satellites screen, where satellites are paired and forgotten. While
+ * any of these is open, the encoder and keypad act on it, SAFE backs out
+ * one level, and ARM, FILL and VENT are refused.
  */
 
 #ifndef CONTROLLER_H_
@@ -46,6 +47,8 @@ enum hybrid_op {
 };
 
 struct sat_view {
+	uint64_t uid;   /* the paired satellite, 0 if none */
+	bool joined;    /* secure session up */
 	bool have_status;
 	bool link_ok;   /* status received within the link timeout */
 	/*
@@ -100,7 +103,40 @@ struct pad_setup {
 /* Settings screen: all pads, including OFF ones */
 struct settings_view {
 	bool active;
+	int cursor;   /* pad, or SETTINGS_SATS for the satellites entry */
+};
+
+#define SETTINGS_SATS -1
+
+/* Satellites screen, opened from the settings screen */
+struct sats_view {
+	bool active;
 	int cursor;
+};
+
+enum pair_phase {
+	PAIR_SCAN,       /* listing satellites in pairing mode */
+	PAIR_WAIT,       /* key exchange running */
+	PAIR_COMPARE,    /* pattern shown, waiting for the operator */
+	PAIR_CONFIRMED,  /* operator confirmed, waiting for the satellite's */
+};
+
+#define PAIR_MAX_FOUND 4
+
+/*
+ * Pairing one satellite slot, see design/radio_security.md. The operator
+ * compares the pattern with the satellite's channel LEDs and confirms on
+ * both devices.
+ */
+struct pair_view {
+	bool active;
+	enum pair_phase phase;
+	int sat;
+	int found;
+	int cursor;
+	uint64_t uid[PAIR_MAX_FOUND];
+	int16_t rssi_dbm[PAIR_MAX_FOUND];
+	uint8_t sas[LSEC_SAS_FRAMES];
 };
 
 /* Rows of the armed continuity table visible at once; the encoder scrolls */
@@ -115,6 +151,8 @@ struct ctrl_view {
 	int table_scroll;         /* first visible row of the armed table */
 	struct settings_view settings;
 	struct pad_setup setup;   /* opened from the settings screen */
+	struct sats_view sats;    /* opened from the settings screen */
+	struct pair_view pair;    /* opened from the satellites screen */
 	bool key_on;
 	/* Why arming is currently not possible, NULL if it is */
 	const char *arm_block;

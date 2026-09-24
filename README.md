@@ -14,6 +14,8 @@ a welded relay or a failed MOSFET — can fire an igniter on its own.
 | [design/](design/) | Design documents. `satellite.md` is the original brief; `satellite_schematic_spec.md` is the netlist-level specification |
 | [hardware/satellite/](hardware/satellite/) | KiCad project for the pad-side satellite board |
 | [firmware/controller_ui/](firmware/controller_ui/) | Zephyr application for the operator console UI (LVGL, currently built for `native_sim`) |
+| [firmware/common/lora/](firmware/common/lora/) | LoRa radio backend shared by console and satellite |
+| [firmware/lora_bench/](firmware/lora_bench/) | Ping/pong link test on two Heltec WiFi LoRa 32 V4 boards |
 | [src/launch_controller/](src/launch_controller/) | Python package — placeholder |
 
 ## Status
