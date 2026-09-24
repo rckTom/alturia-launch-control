@@ -32,6 +32,7 @@
 #include "radio.h"
 #include "sat_link.h"
 #include "secure.h"
+#include "trace.h"
 
 LOG_MODULE_REGISTER(secure, LOG_LEVEL_INF);
 
@@ -41,7 +42,6 @@ LOG_MODULE_REGISTER(secure, LOG_LEVEL_INF);
 #define LOOP_PERIOD        K_MSEC(50)
 #define DISPLAY_REFRESH_MS 1000
 #define LONG_PRESS_MS      1000
-#define DUTY_CYCLE_PERCENT 10
 
 static enum bench_role role;
 /* Written by both threads; st_lock keeps each update whole. */
@@ -340,8 +340,9 @@ static void handle_request(const struct secure_req *req, int64_t now)
 
 	case REQ_PING:
 		if (role == ROLE_CTRL) {
+			/* A ping sent while the last PONG is still on air would collide with it. */
 			uint32_t airtime = radio_airtime_ms(sizeof(struct bench_pkt) + LSEC_OVERHEAD);
-			uint32_t min_interval = airtime * 100 / DUTY_CYCLE_PERCENT;
+			uint32_t min_interval = 2 * airtime;
 
 			ping.count = req->arg;
 			ping.interval_ms = MAX(req->arg2, min_interval);
@@ -458,8 +459,9 @@ void secure_main(enum bench_role r)
 	role = r;
 	st.role = r;
 
-	ret = role == ROLE_CTRL ? ctrl_link_init(on_event, &link_radio_transport)
-				: sat_link_init(on_event, &link_radio_transport);
+	/* The radio, through the frame trace of "bench trace". */
+	ret = role == ROLE_CTRL ? ctrl_link_init(on_event, &trace_transport)
+				: sat_link_init(on_event, &trace_transport);
 	if (ret) {
 		LOG_ERR("link init: %d", ret);
 		note("init failed");

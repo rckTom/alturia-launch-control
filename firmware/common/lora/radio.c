@@ -15,14 +15,24 @@ LOG_MODULE_REGISTER(radio, LOG_LEVEL_INF);
 #define CHIP_POWER_MIN -9
 #define CHIP_POWER_MAX 22
 
+/*
+ * Ceiling for the power at the antenna connector. 869.70-870.00 MHz allows
+ * 5 mW ERP, which is 7 dBm into an antenna of up to 0 dBd (2.15 dBi). Lower
+ * it by the antenna's gain above that.
+ */
+#define MAX_TX_POWER_DBM 7
+
 /* Output power at the antenna until radio_set_tx_power() says otherwise. */
-#define DEFAULT_TX_POWER_DBM 10
+#define DEFAULT_TX_POWER_DBM MAX_TX_POWER_DBM
+
+#define LINK_DATARATE SF_7
 
 /*
- * Pairing runs at SF7 and low power: the exchange is short, and both
- * devices are meant to be next to each other while the user compares LEDs.
+ * Pairing runs at low power: both devices are meant to be next to each
+ * other while the user compares LEDs. It uses a different spreading factor
+ * from the link so that neither profile hears the other.
  */
-#define PAIR_DATARATE     SF_7
+#define PAIR_DATARATE     SF_8
 #define PAIR_TX_POWER_DBM 0
 
 /* Received packets waiting for radio_recv(). */
@@ -33,15 +43,18 @@ static const struct device *const lora = DEVICE_DT_GET(DT_ALIAS(lora0));
 /*
  * The link's modem settings. Both ends must agree on all of them.
  *
- * 869.525 MHz is the centre of the EU 869.40-869.65 MHz sub-band, the only
- * 868 MHz sub-band that allows more than 25 mW ERP (500 mW at 10 % duty
- * cycle). SF9 at 125 kHz is a middle ground between range and airtime
- * that the crystal-only RA-01SH on the satellite can still hold.
+ * 869.85 MHz is the centre of the EU 869.70-870.00 MHz sub-band, the only
+ * 868 MHz sub-band with no duty-cycle limit, at 5 mW ERP. At the ~200 m
+ * the link needs that still leaves about 20 dB of margin at SF7, and it
+ * lets the controller and every satellite transmit as often as the
+ * channel allows. 250 kHz leaves 25 kHz to each band edge for crystal
+ * error, and tolerates more frequency offset than 125 kHz would, which
+ * suits the crystal-only RA-01SH on the satellite.
  */
 static struct lora_modem_config modem = {
-	.frequency = 869525000,
-	.bandwidth = BW_125_KHZ,
-	.datarate = SF_9,
+	.frequency = 869850000,
+	.bandwidth = BW_250_KHZ,
+	.datarate = LINK_DATARATE,
 	.coding_rate = CR_4_5,
 	.preamble_len = 8,
 	.public_network = false,
@@ -138,7 +151,7 @@ static void stop_rx(void)
 static void apply_tx_power(int8_t dbm)
 {
 	int8_t gain = frontend ? frontend->tx_gain_db : 0;
-	int chip = CLAMP(dbm - gain, CHIP_POWER_MIN, CHIP_POWER_MAX);
+	int chip = CLAMP(MIN(dbm, MAX_TX_POWER_DBM) - gain, CHIP_POWER_MIN, CHIP_POWER_MAX);
 
 	modem.tx_power = chip;
 	antenna_power_dbm = chip + gain;
@@ -172,7 +185,7 @@ int radio_set_profile(enum radio_profile p)
 	}
 
 	profile = p;
-	modem.datarate = p == RADIO_PROFILE_PAIR ? PAIR_DATARATE : SF_9;
+	modem.datarate = p == RADIO_PROFILE_PAIR ? PAIR_DATARATE : LINK_DATARATE;
 	apply_tx_power(p == RADIO_PROFILE_PAIR ? PAIR_TX_POWER_DBM : link_power_dbm);
 
 	/* Restart reception with the new settings. */
@@ -209,6 +222,11 @@ unsigned int radio_spreading_factor(void)
 	return modem.datarate;
 }
 
+unsigned int radio_bandwidth_khz(void)
+{
+	return modem.bandwidth;
+}
+
 uint32_t radio_airtime_ms(size_t len)
 {
 	return lora_airtime(lora, len);
@@ -228,9 +246,9 @@ int radio_init(const struct radio_frontend *fe)
 	frontend = fe;
 	apply_tx_power(DEFAULT_TX_POWER_DBM);
 
-	LOG_INF("%u.%03u MHz SF%u BW125, %d dBm at the antenna%s%s",
+	LOG_INF("%u.%03u MHz SF%u BW%u, %d dBm at the antenna%s%s",
 		modem.frequency / 1000000, (modem.frequency / 1000) % 1000,
-		modem.datarate, antenna_power_dbm,
+		modem.datarate, modem.bandwidth, antenna_power_dbm,
 		fe ? " via " : "", fe ? fe->name : "");
 
 	ret = load_tx_config();

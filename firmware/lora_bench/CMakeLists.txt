@@ -16,6 +16,7 @@ target_sources(app PRIVATE
 	src/font_5x8.c
 	src/shell_cmds.c
 	src/secure.c
+	src/trace.c
 )
 
 # Either end of the real link, picked at run time by "bench role", plus

@@ -4,26 +4,21 @@
 #include <string.h>
 #include <zephyr/shell/shell.h>
 #include <zephyr/sys/reboot.h>
+#include <zephyr/sys/util.h>
 
 #include "bench.h"
 #include "radio.h"
 #include "secure.h"
-
-/*
- * Ceiling for "bench power". 14 dBm is the EU limit in the 868.0-868.6 MHz
- * sub-band, and it keeps two boards on the same desk from overdriving each
- * other's LNA and SX1262 input.
- */
-#define MAX_BENCH_POWER_DBM 14
+#include "trace.h"
 
 static int cmd_info(const struct shell *sh, size_t argc, char **argv)
 {
 	uint32_t f = radio_frequency();
 
 	shell_print(sh, "node %04x", bench_node_id());
-	shell_print(sh, "%u.%03u MHz, SF%u, BW125, %d dBm at the antenna",
+	shell_print(sh, "%u.%03u MHz, SF%u, BW%u, %d dBm at the antenna",
 		    f / 1000000, (f / 1000) % 1000, radio_spreading_factor(),
-		    radio_tx_power());
+		    radio_bandwidth_khz(), radio_tx_power());
 	shell_print(sh, "airtime %u ms per %zu-byte packet",
 		    radio_airtime_ms(sizeof(struct bench_pkt)),
 		    sizeof(struct bench_pkt));
@@ -151,17 +146,35 @@ static int cmd_link(const struct shell *sh, size_t argc, char **argv)
 static int cmd_power(const struct shell *sh, size_t argc, char **argv)
 {
 	if (argc > 1) {
-		long dbm = strtol(argv[1], NULL, 0);
-
-		if (dbm > MAX_BENCH_POWER_DBM) {
-			shell_error(sh, "limited to %d dBm", MAX_BENCH_POWER_DBM);
-			return -EINVAL;
-		}
-		radio_set_tx_power(dbm);
+		/* The radio caps it at the band's limit; the print shows what it applied. */
+		radio_set_tx_power(CLAMP(strtol(argv[1], NULL, 0), INT8_MIN, INT8_MAX));
 	}
 
 	shell_print(sh, "%d dBm at the antenna", radio_tx_power());
 	return 0;
+}
+
+static const char *const trace_names[] = {"off", "on", "hex"};
+
+static int cmd_trace(const struct shell *sh, size_t argc, char **argv)
+{
+	if (argc == 1) {
+		shell_print(sh, "trace %s", trace_names[trace_mode()]);
+		return 0;
+	}
+
+	for (int m = TRACE_OFF; m <= TRACE_HEX; m++) {
+		if (strcmp(argv[1], trace_names[m]) == 0) {
+			trace_set_mode(m);
+			if (secure_status()->role == ROLE_OFF) {
+				shell_warn(sh, "role is off; only the secure roles are traced");
+			}
+			return 0;
+		}
+	}
+
+	shell_error(sh, "trace is off, on or hex");
+	return -EINVAL;
 }
 
 SHELL_STATIC_SUBCMD_SET_CREATE(bench_cmds,
@@ -180,6 +193,8 @@ SHELL_STATIC_SUBCMD_SET_CREATE(bench_cmds,
 	SHELL_CMD(unpair, NULL, "Forget the pairing", cmd_unpair),
 	SHELL_CMD(replay, NULL, "Resend the last sealed DATA frame as-is", cmd_replay),
 	SHELL_CMD(link, NULL, "Secure link state and drop counters", cmd_link),
+	SHELL_CMD_ARG(trace, NULL, "trace [off|on|hex]: log every frame sent and received",
+		      cmd_trace, 1, 1),
 	SHELL_SUBCMD_SET_END
 );
 

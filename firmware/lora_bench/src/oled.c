@@ -5,7 +5,7 @@
  * in the 5x8 font from font_5x8.c:
  *
  *   079c  KCT8103L (V4.3)
- *   869.525 SF9 +10dBm
+ *   869.850 SF7 +7dBm
  *   RX ping #12 from 3a41
  *     -45dBm 9dB  3s ago
  *   PING 7/10  ok 6
@@ -150,7 +150,7 @@ void oled_show(const struct bench_status *st)
 /*
  * Secure mode, normally:
  *
- *   079c CTRL SF9 +10dBm
+ *   079c CTRL SF7 +7dBm
  *   link: joined
  *   sat 00c0ffee12345678
  *   > joined

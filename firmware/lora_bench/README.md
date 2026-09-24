@@ -35,7 +35,7 @@ stop. Or from the shell:
 | `bench info` | Node id, frequency, SF, TX power, airtime |
 | `bench ping [count] [interval_ms]` | Start a ping run (default 10, 2000 ms) |
 | `bench stop` | End the run |
-| `bench power [dBm]` | Show or set TX power at the antenna, up to 14 dBm |
+| `bench power [dBm]` | Show or set TX power at the antenna, up to 7 dBm |
 
 A successful run looks like:
 
@@ -46,11 +46,16 @@ A successful run looks like:
 "There" is the PING as heard by the other board, "back" is its PONG as
 heard here. The white LED flashes on every transmission.
 
+0 dBm is the most the SX1262 can report. Two boards on one desk read
+exactly that, because the V4's LNA puts them well past it, and the V4
+can't transmit below about 2 dBm. For a real reading, put the boards at
+least a few metres apart with a wall between them, or take them outside.
+
 The same is on the OLED, so the boards can be tested away from a laptop:
 
 ```
 079c  KCT8103L (V4.3)      node id, detected front-end
-869.525 SF9 +10dBm         radio settings
+869.850 SF7 +7dBm          radio settings
 RX ping #12 from 3a41      last packet heard
   -45dBm 9dB  3s ago
 PING 7/10  ok 6            ping run: sent/total, answered
@@ -104,6 +109,20 @@ Changing the role erases the pairing. Then:
 | `bench replay` | Resend the last sealed DATA frame byte for byte, as an attacker would |
 | `bench link` | Link state and why received frames were dropped |
 | `bench ping`, `bench stop` | Sealed ping run |
+| `bench trace [off\|on\|hex]` | Log every frame sent and received, decoded; `hex` adds a dump |
+
+`bench trace on` shows each frame's kind and clear header. Sealed
+bodies stay encrypted, so a DATA frame shows only its key id and
+counter:
+
+```
+<inf> trace: rx HELLO        1 -> 0   net 3a41, 5 B, -45 dBm 9 dB
+<inf> trace: tx JOIN_REQ     0 -> 1   net 3a41, 13 B
+<inf> trace: tx DATA         0 -> ff  net 3a41 kid 2 ctr 17, 49 B
+```
+
+Address 0 is the controller, `ff` the group, and anything else a
+satellite's slot. Frames that fail the PHY CRC never reach the trace.
 
 Things worth trying: `bench replay` on the controller must count as
 `replay` on the satellite and not answer; `bench unpair` on the satellite
@@ -112,11 +131,17 @@ pairing mode shows a different pattern and must be rejected.
 
 ## Radio settings
 
-Set in [`../common/lora/radio.c`](../common/lora/radio.c): 869.525 MHz,
-SF9, 125 kHz, CR 4/5, 10 dBm at the antenna. 869.525 MHz is in the EU
-869.40–869.65 MHz sub-band (500 mW ERP, 10 % duty cycle); ping runs are
-slowed down if needed to stay under the 10 %. No channel plan for the
-real link has been chosen yet.
+Set in [`../common/lora/radio.c`](../common/lora/radio.c): 869.85 MHz,
+SF7, 250 kHz, CR 4/5, 7 dBm at the antenna. 869.85 MHz is the centre of
+the EU 869.70–870.00 MHz sub-band, which has no duty-cycle limit but
+allows only 5 mW ERP, so `radio_set_tx_power()` caps the power at 7 dBm.
+That assumes an antenna of at most 2.15 dBi; lower the cap by any gain
+above that. Pairing uses SF8 at 0 dBm, so the two profiles don't hear
+each other.
+
+At SF7 and 250 kHz a 22-byte sealed command is about 28 ms on air and a
+63-byte status about 59 ms. Sensitivity is about −121 dBm, which leaves
+roughly 20 dB of margin at 200 m with both antennas near the ground.
 
 ## The V4's RF front-end
 

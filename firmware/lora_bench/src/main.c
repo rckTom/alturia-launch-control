@@ -42,12 +42,6 @@ LOG_MODULE_REGISTER(bench, LOG_LEVEL_INF);
 /* Time allowed for the other board to turn around and start its PONG. */
 #define PONG_TURNAROUND_MS 100
 
-/*
- * The EU 869.40-869.65 MHz sub-band allows a 10 % transmit duty cycle.
- * Ping runs are slowed down to stay inside it.
- */
-#define DUTY_CYCLE_PERCENT 10
-
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
 
 static uint16_t node_id;
@@ -195,16 +189,9 @@ static bool await_pong(uint32_t seq, int64_t deadline, struct bench_pkt *pong,
 static void run_pings(uint32_t count, uint32_t interval_ms)
 {
 	uint32_t airtime = radio_airtime_ms(sizeof(struct bench_pkt));
-	uint32_t min_interval = airtime * 100 / DUTY_CYCLE_PERCENT;
 	uint32_t pongs = 0;
 	int64_t rtt_sum = 0;
 	int16_t worst_rssi = INT16_MAX;
-
-	if (interval_ms < min_interval) {
-		LOG_WRN("interval raised to %u ms for %d %% duty cycle",
-			min_interval, DUTY_CYCLE_PERCENT);
-		interval_ms = min_interval;
-	}
 
 	LOG_INF("pinging %u times every %u ms, %u ms airtime per packet",
 		count, interval_ms, airtime);

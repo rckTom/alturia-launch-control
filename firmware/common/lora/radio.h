@@ -56,16 +56,17 @@ int radio_recv(void *buf, size_t size, k_timeout_t timeout,
 	       struct radio_rx_info *info);
 
 /*
- * Output power at the antenna connector, front-end gain included. The
- * transceiver is clamped to its -9..22 dBm range, so the result can
- * differ from the request; radio_tx_power() reports what was applied.
+ * Output power at the antenna connector, front-end gain included. It is
+ * capped at 7 dBm for the 5 mW ERP band and the transceiver is clamped to
+ * its -9..22 dBm range, so the result can differ from the request;
+ * radio_tx_power() reports what was applied.
  */
 int radio_set_tx_power(int8_t dbm);
 int8_t radio_tx_power(void);
 
 /*
- * Modem settings. LINK is the normal link (SF9, radio_set_tx_power()).
- * PAIR is SF7 at low power, for pairing at arm's length. Both ends must
+ * Modem settings. LINK is the normal link (SF7, radio_set_tx_power()).
+ * PAIR is SF8 at low power, for pairing at arm's length. Both ends must
  * be on the same profile to hear each other.
  */
 enum radio_profile {
@@ -78,6 +79,7 @@ enum radio_profile radio_profile(void);
 
 uint32_t radio_frequency(void);
 unsigned int radio_spreading_factor(void);
+unsigned int radio_bandwidth_khz(void);
 uint32_t radio_airtime_ms(size_t len);
 
 #endif /* LORA_RADIO_H_ */
