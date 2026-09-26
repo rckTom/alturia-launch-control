@@ -87,7 +87,14 @@ native_sim only pulls its uptime back to the host clock once per *rt period*.
 The default of 10 ms let the uptime run up to 10 ms ahead, and satellites
 missed their slots. `radio_sim` sets the period to 500 µs; `--rt-period`
 overrides it. The shell command `rsim` shows how closely the uptime follows
-the host clock.
+the host clock, and how late received frames arrived after they ended on
+air (a reply slot starts 6 ms after the poll, so anything over 3 ms late
+shows up as a missed slot).
+
+The simulator delivers frames from its event loop, so anything that blocks
+the loop delays them. `/api/state` is encoded with `json.dumps` (FastAPI's
+encoder took 200 ms for 2000 frames) and takes `?frames_since=<us>` to
+return only recent frames; scripts should ask for no more than they need.
 
 Command line of a node (the simulator passes these itself):
 
@@ -141,6 +148,36 @@ jammer occupancy reported separately. The *replies per poll* figure per slot
 counts sealed frames of the poll's network (`net_tag`) that arrive in the
 reply window after each POLL.
 
+## Measurements
+
+`scripts/coexist.py` starts its own radiosim on separate ports, so a running
+instance is not disturbed. It builds two networks next to each other and
+times how long a satellite of the second one takes to join after a
+restart. It also reports both networks' replies per poll. With `--commands`
+it times ARM and FIRE acknowledgement, and with `--loss` it runs them under
+random loss so that commands have to be repeated:
+
+```sh
+uv run python scripts/coexist.py --runs 5
+uv run python scripts/coexist.py --ctrl-exe old/ctrl.exe --sat-exe old/sat.exe   # a baseline
+uv run python scripts/coexist.py --commands --loss 30
+```
+
+With `--nets 2..4` it builds that many networks instead, `--sats` (1 or 2)
+satellites each, with every satellite out on the far side of its
+controller, hidden from the other networks. It reports per network the
+polls its satellites decoded and the replies its controller decoded, with
+the reasons for the losses, each controller's `ctrl link` view, and the
+satellites' missed slots and `rsim` lateness. `--aligned` restarts every
+controller at once first; `--commands` then arms and fires on network 1.
+
+```sh
+uv run python scripts/coexist.py --nets 4 --sats 2 --aligned --commands
+```
+
+The web UI's channel panel also lists joins per network and satellite slot
+over the last minute: tries, successes, and how long the last one took.
+
 ## Tests
 
 ```sh
@@ -153,5 +190,5 @@ The tests cover:
 - airtime against the Semtech values
 - the medium: capture, collision, other SF, half duplex, jamming, cut links
   and liveness
-- utilization of a known poll cycle
+- utilization of a known poll cycle, and join counting
 - header decoding

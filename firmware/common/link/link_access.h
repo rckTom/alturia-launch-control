@@ -2,8 +2,8 @@
 
 /*
  * The kernel side of channel access, shared by sat_link and ctrl_link: a
- * microsecond clock and a blocking listen-before-talk on top of the
- * policy in link_sched.h.
+ * microsecond clock and a blocking CSMA/CA on top of the policy in
+ * link_sched.h.
  */
 
 #ifndef LINK_ACCESS_H_
@@ -29,18 +29,22 @@ static inline void link_sleep_until_us(int64_t t_us)
 	}
 }
 
-struct link_lbt_stats {
-	uint32_t busy;      /* listens that found the channel busy */
+struct link_csma_stats {
+	uint32_t busy;      /* senses that found the channel busy */
+	uint32_t deferred;  /* frames that met a busy channel at least once */
 	uint32_t forced;    /* sent anyway at the deadline */
 	uint32_t gave_up;   /* dropped at the deadline */
 };
 
 /*
- * Listen before sending on @p tp, backing off while the channel is busy,
- * for at most @p max_defer_us. Returns LINK_LBT_SEND, LINK_LBT_FORCED or
- * LINK_LBT_GIVE_UP. With listen-before-talk off it returns SEND at once.
+ * CSMA/CA before sending on @p tp, with class @p c (link_sched.h). The
+ * contention window follows @p util, and busy senses are added to it.
+ * @p lock guards @p util and @p stats; it may already be held by the
+ * caller. Returns LINK_CSMA_SEND, LINK_CSMA_FORCED or LINK_CSMA_GIVE_UP.
+ * With carrier sensing off it returns SEND at once.
  */
-enum link_lbt_res link_lbt_wait(const struct link_transport *tp, uint32_t max_defer_us,
-				bool force, bool predelay, struct link_lbt_stats *stats);
+enum link_csma_res link_csma_wait(const struct link_transport *tp,
+				  const struct link_csma_class *c, struct link_util *util,
+				  struct k_mutex *lock, struct link_csma_stats *stats);
 
 #endif /* LINK_ACCESS_H_ */

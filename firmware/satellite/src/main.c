@@ -16,13 +16,7 @@ static atomic_t last_poll_ms;
 
 static void disarm_all(const char *why)
 {
-	if (channels_all_safe()) {
-		return;
-	}
-	LOG_WRN("SAFE: %s", why);
-	for (int ch = 0; ch < SAT_CHANNELS; ch++) {
-		channels_arm(ch, false);
-	}
+	commands_disarm(why);
 }
 
 /* Runs on the link thread. */
@@ -45,19 +39,19 @@ static void on_link_event(const struct lsec_event *ev)
 		break;
 	case LSEC_EV_POLL:
 		/*
-		 * The console polls us: it is alive and counts us in. Its
-		 * commands will be in ev->data; with no status format yet the
-		 * link answers with an empty frame, which keeps the session.
+		 * The console polls us: it is alive and counts us in. The
+		 * poll carries our command; the status is the reply.
 		 */
 		atomic_set(&last_poll_ms, (atomic_val_t)k_uptime_get_32());
+		commands_on_poll(ev);
 		break;
 	case LSEC_EV_LEFT:
 		disarm_all("session with the console dropped");
 		break;
 	case LSEC_EV_DATA:
-		/* Command dispatch lives here; the real protocol is the
-		 * console's, and is not part of the size experiment. Only
-		 * authenticated, fresh frames from our console get this far.
+		/* Commands come in polls (commands.c); nothing else is sent
+		 * this way yet. Only authenticated, fresh frames from our
+		 * console get this far.
 		 */
 		LOG_DBG("%s frame, %u bytes", ev->group ? "group" : "unicast", (unsigned)ev->len);
 		break;
@@ -95,7 +89,11 @@ int main(void)
 		return ret;
 	}
 
-	/* The RA-01SH switches its own RF path from DIO2: no front-end. */
+	/*
+	 * The Wio-SX1262 switches its own RF path: DIO2 selects TX and the
+	 * driver powers the switch from RF_SW (antenna-enable-gpios). No
+	 * front-end.
+	 */
 	ret = radio_init(NULL);
 	if (ret) {
 		LOG_ERR("radio init: %d", ret);
@@ -115,11 +113,13 @@ int main(void)
 
 		k_sleep(K_MSEC(100));
 
-		if (rail_read(&rail_mv, &rail_ma) == 0 && rail_ma > leak_threshold_ma) {
+		commands_measure();
+
+		/* Current with no output driven is a leak. */
+		if (!channels_pulsing() && !channels_valve_mask() &&
+		    rail_read(&rail_mv, &rail_ma) == 0 && rail_ma > leak_threshold_ma) {
 			LOG_ERR("rail leaking %d mA with no channel firing", rail_ma);
-			for (int ch = 0; ch < SAT_CHANNELS; ch++) {
-				channels_arm(ch, false);
-			}
+			disarm_all("rail leak");
 		}
 
 		/* The console's heartbeat is being polled; without it, SAFE. */

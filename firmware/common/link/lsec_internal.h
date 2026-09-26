@@ -178,4 +178,13 @@ static inline bool lsec_due(int64_t now, int64_t last, int64_t interval)
 	return now - last >= interval;
 }
 
+/*
+ * @p now moved by up to a quarter of @p interval either way, to record as
+ * the time a repeating frame went out: the next one is then due after ¾
+ * to 1¼ intervals. Retries at a fixed interval can stay in step with
+ * another network's poll cycle and meet it every time; see
+ * design/radio_security.md, "Other networks on the channel".
+ */
+int64_t lsec_jittered(int64_t now, uint32_t interval);
+
 #endif /* LSEC_INTERNAL_H_ */

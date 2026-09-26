@@ -36,6 +36,13 @@ static const struct device *const adc_rails = DEVICE_DT_GET(DT_NODELABEL(adc_rai
 static bool armed[SAT_CHANNELS];
 static int16_t sample_buf;
 
+/* Low sides on: a fire pulse in progress, and valves held open. */
+static uint8_t pulsing;
+static uint8_t valves;
+
+static void pulse_end_fn(struct k_work *work);
+static K_WORK_DELAYABLE_DEFINE(pulse_end, pulse_end_fn);
+
 static int adc_setup(const struct device *dev, uint8_t ch, uint8_t ref)
 {
 	struct adc_channel_cfg cfg = {
@@ -102,10 +109,12 @@ int channels_init(void)
 		return -ENODEV;
 	}
 
-	ret = adc_setup(adc_cont, 0, ADC_REF_INTERNAL);
-	if (ret) {
-		LOG_ERR("continuity adc setup: %d", ret);
-		return ret;
+	for (int ch = 0; ch < SAT_CHANNELS; ch++) {
+		ret = adc_setup(adc_cont, ch, ADC_REF_INTERNAL);
+		if (ret) {
+			LOG_ERR("continuity adc setup, channel %d: %d", ch + 1, ret);
+			return ret;
+		}
 	}
 
 	ret = adc_setup(adc_rails, 0, ADC_REF_EXTERNAL0);
@@ -117,14 +126,101 @@ int channels_init(void)
 	return 0;
 }
 
+/* A channel's low side is on while it pulses or holds a valve, and armed. */
+static int update_low(int ch)
+{
+	bool on = armed[ch] && ((pulsing | valves) & BIT(ch));
+
+	return gpio_pin_set_dt(&enable_low[ch], on);
+}
+
 int channels_arm(int ch, bool on)
 {
+	int ret;
+
 	if (ch < 0 || ch >= SAT_CHANNELS) {
 		return -EINVAL;
 	}
 
 	armed[ch] = on;
-	return gpio_pin_set_dt(&enable_high[ch], on);
+	if (!on) {
+		pulsing &= ~BIT(ch);
+		valves &= ~BIT(ch);
+	}
+	/* Low side first when disarming, high side first when arming. */
+	ret = on ? gpio_pin_set_dt(&enable_high[ch], 1) : update_low(ch);
+	if (ret) {
+		return ret;
+	}
+	return on ? update_low(ch) : gpio_pin_set_dt(&enable_high[ch], 0);
+}
+
+uint8_t channels_armed_mask(void)
+{
+	uint8_t mask = 0;
+
+	for (int ch = 0; ch < SAT_CHANNELS; ch++) {
+		if (armed[ch]) {
+			mask |= BIT(ch);
+		}
+	}
+	return mask;
+}
+
+static void pulse_end_fn(struct k_work *work)
+{
+	uint8_t ended = pulsing;
+
+	pulsing = 0;
+	for (int ch = 0; ch < SAT_CHANNELS; ch++) {
+		if (ended & BIT(ch)) {
+			(void)update_low(ch);
+		}
+	}
+}
+
+int channels_pulse(uint8_t mask, uint32_t ms)
+{
+	if (mask & ~channels_armed_mask()) {
+		return -EPERM;
+	}
+	if (pulsing) {
+		return -EBUSY;
+	}
+
+	pulsing = mask;
+	for (int ch = 0; ch < SAT_CHANNELS; ch++) {
+		if (mask & BIT(ch)) {
+			(void)update_low(ch);
+		}
+	}
+	k_work_reschedule(&pulse_end, K_MSEC(ms));
+	return 0;
+}
+
+uint8_t channels_pulsing(void)
+{
+	return pulsing;
+}
+
+int channels_valves(uint8_t mask)
+{
+	uint8_t changed;
+
+	mask &= channels_armed_mask();
+	changed = mask ^ valves;
+	valves = mask;
+	for (int ch = 0; ch < SAT_CHANNELS; ch++) {
+		if (changed & BIT(ch)) {
+			(void)update_low(ch);
+		}
+	}
+	return 0;
+}
+
+uint8_t channels_valve_mask(void)
+{
+	return valves;
 }
 
 bool channels_all_safe(void)

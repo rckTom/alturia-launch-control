@@ -12,7 +12,7 @@
 
 #include "ctrl_link.h"
 #include "link.h"
-#include "link_wire.h"
+#include "sat_wire.h"
 #include "pads.h"
 
 #ifdef CONFIG_APP_SAT_SIM
@@ -55,13 +55,16 @@ static void on_event(const struct lsec_event *ev)
 
 	switch (ev->type) {
 	case LSEC_EV_DATA:
-		if (sat < 0 || sat >= NUM_SATS || ev->group ||
-		    wire_decode_status(ev->data, ev->len, &st)) {
+		if (sat < 0 || sat >= NUM_SATS || ev->group) {
 			return;
 		}
+		/* A short status updates the last one; the full-only fields stay. */
 		k_mutex_lock(&lock, K_FOREVER);
-		rx_status[sat] = st;
-		rx_time[sat] = k_uptime_get();
+		st = rx_status[sat];
+		if (wire_decode_status(ev->data, ev->len, &st) == 0) {
+			rx_status[sat] = st;
+			rx_time[sat] = k_uptime_get();
+		}
 		k_mutex_unlock(&lock);
 		break;
 	case LSEC_EV_JOINED:
@@ -95,9 +98,9 @@ int link_init(void)
 #endif
 }
 
-int link_poll(const struct link_cmd cmds[NUM_SATS])
+int link_poll(const struct link_cmd cmds[NUM_SATS], bool full)
 {
-	uint8_t buf[WIRE_POLL_MAX_LEN];
+	uint8_t buf[WIRE_POLL_MAX_LEN(NUM_SATS)];
 	/* Satellite n is slot n + 1, which is bit n of the link's mask. */
 	uint8_t mask = ctrl_link_joined_mask() & BIT_MASK(NUM_SATS);
 	size_t len;
@@ -107,8 +110,22 @@ int link_poll(const struct link_cmd cmds[NUM_SATS])
 		return -ENOTCONN;
 	}
 
-	len = wire_encode_poll(cmds, mask, buf);
-	return ctrl_link_poll(mask, buf, len, WIRE_STATUS_LEN);
+	len = wire_encode_poll(cmds, NUM_SATS, mask, full, buf);
+	return ctrl_link_poll(mask, buf, len, full ? WIRE_STATUS_LEN : WIRE_STATUS_SHORT_LEN);
+}
+
+int64_t link_next_poll_ms(uint32_t period_ms)
+{
+	return ctrl_link_next_poll_ms(period_ms);
+}
+
+void link_channel(uint8_t *util_pct, uint8_t *other_nets)
+{
+	struct ctrl_link_state ls;
+
+	ctrl_link_state(&ls);
+	*util_pct = ls.util_pct;
+	*other_nets = ls.foreign_nets;
 }
 
 int64_t link_last_status(int sat, struct sat_status *out)

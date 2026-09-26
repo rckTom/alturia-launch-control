@@ -21,7 +21,7 @@ drivers are compiled and exercised:
 
 | Device | Bus | Role |
 |---|---|---|
-| SX1262 (RA-01SH) | SPI1 (shield) | LoRa link to the console |
+| SX1262 (Wio-SX1262 on the board) | SPI1 (shield) | LoRa link to the console |
 | ADS124S08 | SPI2 | 24-bit continuity measurement |
 | MCP3208 | SPI2 | 12-bit rail dividers |
 | INA226 | I2C1 | Fire-rail current across the 2 mΩ shunt |

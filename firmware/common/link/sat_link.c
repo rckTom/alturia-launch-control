@@ -17,14 +17,6 @@ LOG_MODULE_REGISTER(sat_link, LOG_LEVEL_INF);
 /* Receive window; also the cadence of lsec's timers. */
 #define RX_WINDOW K_MSEC(50)
 
-/*
- * How long frames outside a slot may wait for a clear channel. An answer
- * to the controller comes right after its request, into the gap the
- * controller leaves for it; HELLO and PAIR_ADV are repeated anyway.
- */
-#define ANSWER_DEFER_US      (10 * 1000)
-#define UNSOLICITED_DEFER_US (200 * 1000)
-
 static struct lsec_sat sat;
 /* Guards sat and everything below. Recursive, so event handlers may call back in. */
 static K_MUTEX_DEFINE(lock);
@@ -32,11 +24,14 @@ static link_event_cb event_cb;
 static const struct link_transport *tp;
 static int16_t last_rssi;
 static int8_t last_snr;
+/* How busy the channel is, as this satellite hears it. */
+static struct link_util util;
 
 /* The answer to the poll being handled, waiting for its slot. */
 static struct {
 	bool pending;
-	int64_t at_us;       /* slot start */
+	int64_t at_us;       /* slot start (LINK_REPLY_CSMA: the window's) */
+	int64_t end_us;      /* LINK_REPLY_CSMA: the reply window's end */
 	uint8_t slot_ms;
 	size_t len;
 	uint8_t data[LSEC_MAX_PAYLOAD];
@@ -91,22 +86,27 @@ static void io_send(void *user, const uint8_t *buf, size_t len)
 	}
 #endif
 
-	if (!in_slot) {
-		bool answer = is_answer(kind);
-
-		if (link_lbt_wait(tp, answer ? ANSWER_DEFER_US : UNSOLICITED_DEFER_US, false,
-				  !answer, &counters.lbt) == LINK_LBT_GIVE_UP) {
-			/* lsec repeats what matters: HELLO, ADV, and the controller's requests. */
-			LOG_DBG("channel busy, dropped kind %d", kind);
-			return;
-		}
+	/*
+	 * An answer to the controller goes right after its request, into the
+	 * gap the controller leaves for it; HELLO and PAIR_ADV are repeated
+	 * anyway, so they back off further on a busy channel.
+	 */
+	if (!in_slot && link_csma_wait(tp, is_answer(kind) ? &link_csma_answer
+							   : &link_csma_unsolicited,
+				       &util, &lock, &counters.csma) == LINK_CSMA_GIVE_UP) {
+		/* lsec repeats what matters: HELLO, ADV, and the controller's requests. */
+		LOG_DBG("channel busy, dropped kind %d", kind);
+		return;
 	}
+
+	int64_t start = link_now_us();
 
 	ret = tp->send(buf, len);
 
 	if (ret) {
 		LOG_ERR("send: %d", ret);
 	}
+	link_util_add(&util, start, link_now_us());
 }
 
 static void io_event(void *user, const struct lsec_event *ev)
@@ -114,7 +114,12 @@ static void io_event(void *user, const struct lsec_event *ev)
 	if (ev->type == LSEC_EV_POLL) {
 		/* Queue an empty answer; the handler may replace it. */
 		reply.pending = true;
-		reply.at_us = link_slot_start_us(rx_time_us, ev->rank, ev->slot_ms);
+		if (IS_ENABLED(CONFIG_LINK_REPLY_CSMA)) {
+			reply.at_us = link_slot_start_us(rx_time_us, 0, ev->slot_ms);
+			reply.end_us = link_replies_end_us(rx_time_us, ev->count, ev->slot_ms);
+		} else {
+			reply.at_us = link_slot_start_us(rx_time_us, ev->rank, ev->slot_ms);
+		}
 		reply.slot_ms = ev->slot_ms;
 		reply.len = 0;
 		counters.polls++;
@@ -124,6 +129,29 @@ static void io_event(void *user, const struct lsec_event *ev)
 	if (event_cb) {
 		event_cb(ev);
 	}
+}
+
+/*
+ * LINK_REPLY_CSMA: contend for the rest of the reply window. The reply has
+ * to start one slot before the window ends; the backoff window takes about
+ * half of what is left, the rest is for waiting out a busy channel.
+ */
+static enum link_csma_res reply_in_window(void)
+{
+	int64_t room = reply.end_us - (int64_t)reply.slot_ms * 1000 - link_now_us();
+	struct link_csma_class c = {.force = false};
+	int64_t slots = room / 2 / LINK_CSMA_SLOT_US;
+
+	if (room < 0) {
+		return LINK_CSMA_GIVE_UP;
+	}
+	while (c.cw_min < 10 && (2 << c.cw_min) <= slots + 1) {
+		c.cw_min++;
+	}
+	c.cw_max = c.cw_min;
+	c.max_defer_us = room - ((1 << c.cw_min) - 1) * LINK_CSMA_SLOT_US;
+
+	return link_csma_wait(tp, &c, &util, &lock, &counters.csma);
 }
 
 /* The slot has come: listen, then send the reply or let the slot pass. */
@@ -139,11 +167,13 @@ static void send_reply(void)
 		return;
 	}
 
-	if (LINK_LBT_LISTEN_US && tp->channel_clear &&
-	    tp->channel_clear(LINK_LBT_LISTEN_US, NULL) == 0) {
+	/* One sense at the slot's start, no backoff: the slot is ours. */
+	if ((IS_ENABLED(CONFIG_LINK_REPLY_CSMA)
+		     ? reply_in_window()
+		     : link_csma_wait(tp, &link_csma_slot, &util, &lock, &counters.csma)) ==
+	    LINK_CSMA_GIVE_UP) {
 		/* Someone is on the air: sending now would ruin both frames. */
 		counters.slot_busy++;
-		counters.lbt.busy++;
 		return;
 	}
 
@@ -213,6 +243,8 @@ static void link_main(void *p1, void *p2, void *p3)
 			last_rssi = info.rssi_dbm;
 			last_snr = info.snr_db;
 			rx_time_us = info.time_us;
+			link_util_add(&util, info.time_us - (int64_t)tp->airtime_ms(len) * 1000,
+				      info.time_us);
 			lsec_sat_rx(&sat, buf, len, k_uptime_get());
 		}
 
@@ -243,6 +275,7 @@ int sat_link_init(link_event_cb cb, const struct link_transport *transport)
 
 	event_cb = cb;
 	tp = transport;
+	link_util_init(&util, link_now_us());
 
 	ret = lsec_sat_init(&sat, &io, uid);
 	if (ret) {
@@ -347,5 +380,6 @@ void sat_link_state(struct sat_link_state *out)
 	out->rssi_dbm = last_rssi;
 	out->snr_db = last_snr;
 	out->stats = sat.stats;
+	out->util_pct = link_util_pct(&util, link_now_us());
 	k_mutex_unlock(&lock);
 }

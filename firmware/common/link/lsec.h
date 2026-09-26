@@ -63,12 +63,12 @@
 #ifdef CONFIG_LINK_SAT_SESSION_TIMEOUT_MS
 #define LSEC_SESSION_TIMEOUT_MS CONFIG_LINK_SAT_SESSION_TIMEOUT_MS
 #else
-#define LSEC_SESSION_TIMEOUT_MS 5000   /* satellite: no addressed poll, drop the session */
+#define LSEC_SESSION_TIMEOUT_MS 10000  /* satellite: no addressed poll, drop the session */
 #endif
 #ifdef CONFIG_LINK_CTRL_PEER_TIMEOUT_MS
 #define LSEC_PEER_TIMEOUT_MS CONFIG_LINK_CTRL_PEER_TIMEOUT_MS
 #else
-#define LSEC_PEER_TIMEOUT_MS 4000      /* controller: no reply, drop the satellite's session */
+#define LSEC_PEER_TIMEOUT_MS 8000      /* controller: no reply, drop the satellite's session */
 #endif
 
 /* What a pairing leaves behind on both sides. */
@@ -192,6 +192,7 @@ struct lsec_ctrl_peer {
 	int64_t ok_sent;
 	int64_t gtk_sent;
 	struct lsec_join hs;
+	int64_t join_retry_from;   /* hs.sent, jittered, for LSEC_JOIN_RETRY_MS */
 	struct lsec_dir tx;  /* controller -> satellite */
 	struct lsec_dir rx;  /* satellite -> controller */
 	int64_t last_rx;     /* last authenticated frame from the satellite */

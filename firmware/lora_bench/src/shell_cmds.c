@@ -144,14 +144,18 @@ static int cmd_lbt(const struct shell *sh, size_t argc, char **argv)
 		ctrl_link_state(&ls);
 		shell_print(sh, "polls %u, queue full %u, tx queue full %u", ls.polls,
 			    ls.poll_q_full, ls.tx_q_full);
-		shell_print(sh, "listens busy %u, sent anyway %u", ls.lbt.busy, ls.lbt.forced);
+		shell_print(sh, "channel %u%% busy, %u other networks", ls.util_pct, ls.foreign_nets);
+		shell_print(sh, "senses busy %u, frames deferred %u, sent anyway %u", ls.csma.busy,
+			    ls.csma.deferred, ls.csma.forced);
 	} else if (st->role == ROLE_SAT) {
 		struct sat_link_state ls;
 
 		sat_link_state(&ls);
 		shell_print(sh, "polls %u, replies %u, slots skipped: %u busy %u late", ls.polls,
 			    ls.replies, ls.slot_busy, ls.slot_late);
-		shell_print(sh, "listens busy %u, frames given up %u", ls.lbt.busy, ls.lbt.gave_up);
+		shell_print(sh, "channel %u%% busy", ls.util_pct);
+		shell_print(sh, "senses busy %u, frames deferred %u, given up %u", ls.csma.busy,
+			    ls.csma.deferred, ls.csma.gave_up);
 	}
 	return 0;
 }

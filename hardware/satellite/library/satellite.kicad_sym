@@ -4547,13 +4547,13 @@
 		)
 		(embedded_fonts no)
 	)
-	(symbol "RA-01SH"
+	(symbol "WIO-SX1262"
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(in_pos_files yes)
 		(duplicate_pin_numbers_are_jumpers no)
-		(property "Reference" "L"
+		(property "Reference" "U"
 			(at 0 13.97 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4563,8 +4563,8 @@
 				)
 			)
 		)
-		(property "Value" "RA-01SH"
-			(at 0 -13.97 0)
+		(property "Value" "Wio-SX1262"
+			(at 0 -11.43 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -4573,7 +4573,18 @@
 				)
 			)
 		)
-		(property "Footprint" "satellite:WIRELM-SMD_RA-01SH"
+		(property "Footprint" "satellite:WIRELM-SMD_WIO-SX1262"
+			(at 0 -13.97 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "https://files.seeedstudio.com/products/SenseCAP/Wio_SX1262/Wio-SX1262_Module_Datasheet.pdf"
 			(at 0 -16.51 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4584,7 +4595,18 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://www.lcsc.com/datasheet/C2764087.pdf"
+		(property "Description" "LoRa module, SX1262, 862-930 MHz, 22 dBm, TCXO on DIO3, DC-DC. RF switch: DIO2 high = TX (internal); RF_SW high = RX"
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Manufacturer" "Seeed Studio"
 			(at 0 -19.05 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4595,18 +4617,7 @@
 				)
 			)
 		)
-		(property "Description" ""
-			(at 0 0 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(hide yes)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Manufacturer" "Ai-Thinker(安信可)"
+		(property "MPN" "Wio-SX1262"
 			(at 0 -21.59 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4617,29 +4628,7 @@
 				)
 			)
 		)
-		(property "MPN" "Ra-01SH"
-			(at 0 -24.13 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(hide yes)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "LCSC Part" "C2764087"
-			(at 0 -26.67 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(hide yes)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "ki_keywords" "LoRa Modules"
+		(property "ki_keywords" "LoRa SX1262 module"
 			(at 0 0 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4650,27 +4639,16 @@
 				)
 			)
 		)
-		(symbol "RA-01SH_0_1"
+		(symbol "WIO-SX1262_0_1"
 			(rectangle
 				(start -8.89 11.43)
-				(end 8.89 -11.43)
+				(end 8.89 -8.89)
 				(stroke
 					(width 0)
 					(type default)
 				)
 				(fill
 					(type background)
-				)
-			)
-			(circle
-				(center -7.62 10.16)
-				(radius 0.38)
-				(stroke
-					(width 0)
-					(type default)
-				)
-				(fill
-					(type none)
 				)
 			)
 			(pin passive line
@@ -4683,7 +4661,7 @@
 						)
 					)
 				)
-				(number "1"
+				(number "9"
 					(effects
 						(font
 							(size 1.27 1.27)
@@ -4701,7 +4679,7 @@
 						)
 					)
 				)
-				(number "2"
+				(number "7"
 					(effects
 						(font
 							(size 1.27 1.27)
@@ -4712,14 +4690,14 @@
 			(pin passive line
 				(at -11.43 3.81 0)
 				(length 2.54)
-				(name "3.3V"
+				(name "VCC"
 					(effects
 						(font
 							(size 1.27 1.27)
 						)
 					)
 				)
-				(number "3"
+				(number "8"
 					(effects
 						(font
 							(size 1.27 1.27)
@@ -4730,14 +4708,14 @@
 			(pin passive line
 				(at -11.43 1.27 0)
 				(length 2.54)
-				(name "RESET"
+				(name "NRST"
 					(effects
 						(font
 							(size 1.27 1.27)
 						)
 					)
 				)
-				(number "4"
+				(number "5"
 					(effects
 						(font
 							(size 1.27 1.27)
@@ -4748,14 +4726,14 @@
 			(pin passive line
 				(at -11.43 -1.27 0)
 				(length 2.54)
-				(name "TXEN"
+				(name "RF_SW"
 					(effects
 						(font
 							(size 1.27 1.27)
 						)
 					)
 				)
-				(number "5"
+				(number "1"
 					(effects
 						(font
 							(size 1.27 1.27)
@@ -4773,169 +4751,7 @@
 						)
 					)
 				)
-				(number "6"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-			)
-			(pin passive line
-				(at -11.43 -6.35 0)
-				(length 2.54)
-				(name "DIO2"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-				(number "7"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-			)
-			(pin passive line
-				(at -11.43 -8.89 0)
-				(length 2.54)
-				(name "DIO3"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-				(number "8"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-			)
-			(pin passive line
-				(at 11.43 -8.89 180)
-				(length 2.54)
-				(name "GND"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-				(number "9"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-			)
-			(pin passive line
-				(at 11.43 -6.35 180)
-				(length 2.54)
-				(name "BUSY"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-				(number "10"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-			)
-			(pin passive line
-				(at 11.43 -3.81 180)
-				(length 2.54)
-				(name "RXEN"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-				(number "11"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-			)
-			(pin passive line
-				(at 11.43 -1.27 180)
-				(length 2.54)
-				(name "SCK"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
 				(number "12"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-			)
-			(pin passive line
-				(at 11.43 1.27 180)
-				(length 2.54)
-				(name "MISO"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-				(number "13"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-			)
-			(pin passive line
-				(at 11.43 3.81 180)
-				(length 2.54)
-				(name "MOSI"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-				(number "14"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-			)
-			(pin passive line
-				(at 11.43 6.35 180)
-				(length 2.54)
-				(name "NSS"
-					(effects
-						(font
-							(size 1.27 1.27)
-						)
-					)
-				)
-				(number "15"
 					(effects
 						(font
 							(size 1.27 1.27)
@@ -4953,7 +4769,97 @@
 						)
 					)
 				)
-				(number "16"
+				(number "10"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+			)
+			(pin passive line
+				(at 11.43 6.35 180)
+				(length 2.54)
+				(name "NSS"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(number "6"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+			)
+			(pin passive line
+				(at 11.43 3.81 180)
+				(length 2.54)
+				(name "MOSI"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(number "3"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+			)
+			(pin passive line
+				(at 11.43 1.27 180)
+				(length 2.54)
+				(name "MISO"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(number "2"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+			)
+			(pin passive line
+				(at 11.43 -1.27 180)
+				(length 2.54)
+				(name "SCK"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(number "4"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+			)
+			(pin passive line
+				(at 11.43 -6.35 180)
+				(length 2.54)
+				(name "BUSY"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(number "11"
 					(effects
 						(font
 							(size 1.27 1.27)

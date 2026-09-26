@@ -9,7 +9,7 @@ menu "Link channel access"
 
 config LINK_SAT_SAFE_TIMEOUT_MS
 	int "Satellite: go SAFE after this long without an addressed poll"
-	default 1500
+	default 4000
 	help
 	  The satellite application disarms every channel when no poll
 	  addressed to it has arrived for this long. The session is kept, so
@@ -17,14 +17,14 @@ config LINK_SAT_SAFE_TIMEOUT_MS
 
 config LINK_CTRL_PEER_TIMEOUT_MS
 	int "Controller: drop a satellite's session after this long without a reply"
-	default 4000
+	default 8000
 	help
 	  The controller stops addressing a satellite whose session it has
 	  dropped, so the satellite times out too, and then joins again.
 
 config LINK_SAT_SESSION_TIMEOUT_MS
 	int "Satellite: drop the session after this long without an addressed poll"
-	default 5000
+	default 10000
 	help
 	  After this the satellite forgets its session keys and sends HELLO
 	  until the controller joins it again. Keep it above
@@ -45,24 +45,22 @@ config LINK_SLOT_GUARD_MS
 	  at the start of each slot.
 
 config LINK_LBT
-	bool "Listen before talk"
+	bool "Carrier sense before talk (CSMA/CA)"
 	default y
 	help
-	  Sample the channel's RSSI before transmitting. Turn off to compare
-	  with plain scheduled access on the bench.
+	  Sense the channel before transmitting, after a random backoff out
+	  of a contention window that grows with the channel utilization
+	  (the way Meshtastic does it). Turn off to compare with plain
+	  scheduled access on the bench.
 
 if LINK_LBT
 
 config LINK_LBT_LISTEN_US
-	int "How long each listen samples the channel, in microseconds"
+	int "How long each carrier sense samples the channel, in microseconds"
 	default 1000
 
 config LINK_LBT_MARGIN_DB
 	int "Busy threshold above the measured noise floor, in dB"
-	default 10
-
-config LINK_LBT_BACKOFF_MAX_MS
-	int "Upper bound of one random backoff, in ms"
 	default 10
 
 config LINK_LBT_MAX_DEFER_MS
@@ -70,9 +68,83 @@ config LINK_LBT_MAX_DEFER_MS
 	default 50
 	help
 	  A poll carries SAFE and FIRE, so the controller never waits on
-	  someone else's traffic for longer than this.
+	  someone else's traffic for longer than this, beyond its contention
+	  window.
+
+config LINK_CSMA_SLOT_US
+	int "CSMA slot: the backoff unit, about one carrier sense, in microseconds"
+	default 1000
+
+config LINK_CSMA_CTRL_CW_MIN
+	int "Controller: contention window exponent on an idle channel"
+	default 3
+	range 0 10
+	help
+	  The backoff before each controller frame is 0 to 2^cw - 1 slots.
+	  cw runs linearly from this minimum on an idle channel to
+	  LINK_CSMA_CTRL_CW_MAX on a fully busy one.
+
+config LINK_CSMA_CTRL_CW_MAX
+	int "Controller: contention window exponent on a busy channel"
+	default 7
+	range 0 10
+
+config LINK_CSMA_SAT_CW_MIN
+	int "Satellite: contention window exponent for HELLO and PAIR_ADV, idle channel"
+	default 4
+	range 0 10
+
+config LINK_CSMA_SAT_CW_MAX
+	int "Satellite: contention window exponent for HELLO and PAIR_ADV, busy channel"
+	default 8
+	range 0 10
 
 endif # LINK_LBT
+
+config LINK_UTIL_WINDOW_S
+	int "Channel utilization is measured over this many seconds"
+	default 10
+	range 2 60
+
+config LINK_REPLY_CSMA
+	bool "Experiment: satellites contend for the reply window instead of rank slots"
+	depends on LINK_LBT
+	help
+	  Each addressed satellite answers a poll anywhere in the poll's
+	  reply window (as many slots as satellites addressed), after a
+	  CSMA/CA backoff, instead of in the slot of its rank. This is what
+	  the link would look like without slots; compare in radiosim.
+
+config LINK_FOREIGN
+	bool "Controller: track other networks on the channel"
+	default n
+	help
+	  The controller learns when other controllers' networks are on the
+	  air from the clear headers of their frames (link_foreign_* in
+	  link_sched.c), and uses that to hold its frames for a gap, to take
+	  turns with them (the DESYNC poll phase), to reserve their cycles
+	  for at least as long as its own, and to count them for the display.
+	  Off, the controller relies on CSMA/CA alone, as Meshtastic does.
+
+if LINK_FOREIGN
+
+config LINK_FOREIGN_HOLD
+	bool "Controller: hold frames for other networks' predicted cycles"
+	default y
+	help
+	  Turn off to see whether CSMA/CA and the poll phase placement are
+	  enough without holding each frame for a gap (link_foreign_start()).
+
+config LINK_FOREIGN_MAX_WAIT_MS
+	int "Controller: wait at most this long for another network's cycle, in ms"
+	default 400
+	help
+	  The controller estimates when other controllers' networks are on
+	  the air (their polls and replies) and holds its own frames until
+	  they fit in a gap. It never holds one longer than this; commands
+	  are acknowledged and repeated anyway.
+
+endif # LINK_FOREIGN
 
 endmenu
 

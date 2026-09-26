@@ -7,6 +7,7 @@ project(launch_satellite)
 
 target_sources(app PRIVATE
 	src/main.c
+	src/commands.c
 	src/pair_ui.c
 	src/channels.c
 	src/rail.c
@@ -17,6 +18,10 @@ target_sources(app PRIVATE
 set(LSEC_LINK sat)
 set(LSEC_RADIO ON)
 include(${CMAKE_CURRENT_SOURCE_DIR}/../common/link/link_sec.cmake)
+
+# Command and status payloads, shared with the controller.
+target_include_directories(app PRIVATE ../common/wire)
+target_sources(app PRIVATE ../common/wire/sat_wire.c)
 
 # native_sim: LEDs and pairing button in the radio network simulator's UI.
 if(LSEC_RADIO_SIM)

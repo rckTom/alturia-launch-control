@@ -66,8 +66,7 @@ static const struct device *const lora = DEVICE_DT_GET(DT_ALIAS(lora0));
  * the link needs that still leaves about 20 dB of margin at SF7, and it
  * lets the controller and every satellite transmit as often as the
  * channel allows. 250 kHz leaves 25 kHz to each band edge for crystal
- * error, and tolerates more frequency offset than 125 kHz would, which
- * suits the crystal-only RA-01SH on the satellite.
+ * error, and tolerates more frequency offset than 125 kHz would.
  */
 static struct lora_modem_config modem = {
 	.frequency = 869850000,

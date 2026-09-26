@@ -2,7 +2,7 @@
 
 /*
  * native_sim: the satellite's LEDs and pairing button in the radio network
- * simulator's web UI. The LEDs are emulated GPIOs (boards/native_sim.overlay)
+ * simulator's web UI, and an igniter on every output for the continuity ADC. The LEDs are emulated GPIOs (boards/native_sim.overlay)
  * whose levels go to the simulator as a bitmask; its button press lands on
  * the button's pin, so pair_ui.c sees it through gpio-keys as on the board.
  *
@@ -11,6 +11,7 @@
  */
 
 #include <zephyr/device.h>
+#include <zephyr/drivers/adc/adc_emul.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/gpio/gpio_emul.h>
 #include <zephyr/init.h>
@@ -23,6 +24,12 @@
 #define POLL_MS 50
 
 static const struct device *const gpio0 = DEVICE_DT_GET(DT_NODELABEL(gpio0));
+static const struct device *const adc_cont = DEVICE_DT_GET(DT_NODELABEL(adc_continuity));
+
+/* What the continuity ADC reads on every output: an igniter of about
+ * 1.5 Ohm at commands.c's provisional 10 mOhm per mV.
+ */
+#define IGNITER_MV 150
 
 static const gpio_pin_t led_pins[] = {
 	PIN(DT_ALIAS(chan_led0)), PIN(DT_ALIAS(chan_led1)), PIN(DT_ALIAS(chan_led2)),
@@ -66,6 +73,9 @@ static void on_button(uint8_t index, bool pressed)
 
 static int sim_io_init(void)
 {
+	for (int ch = 0; ch < 6; ch++) {
+		adc_emul_const_value_set(adc_cont, ch, IGNITER_MV);
+	}
 	radio_sim_set_button_cb(on_button);
 	k_work_reschedule(&poll_work, K_MSEC(POLL_MS));
 	return 0;

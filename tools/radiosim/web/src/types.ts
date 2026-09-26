@@ -104,6 +104,16 @@ export interface PollStats {
   replies: Record<string, number>
 }
 
+export interface JoinStats {
+  net_tag: string
+  ctrl: number | null
+  slot: number
+  attempts: number
+  joins: number
+  last_join_ms: number | null
+  joining: boolean
+}
+
 export interface Stats {
   now: number
   util: Record<string, number>
@@ -112,6 +122,7 @@ export interface Stats {
   outcomes_10s: Record<string, number>
   links: { src: number; dst: number; ok: number; total: number; pdr: number }[]
   polls: PollStats[]
+  joins: JoinStats[]
 }
 
 export type DockTab = { type: 'shell' | 'screen'; id: number }

@@ -8,8 +8,9 @@
  * run exactly this.
  *
  * The link thread is the only one that transmits. Frames go out in the
- * order they were sealed, each after listening for a clear channel (and
- * sent anyway after LINK_LBT_MAX_DEFER_MS). After a poll the controller
+ * order they were sealed, each after CSMA/CA: a random backoff that grows
+ * with the channel utilization, then a carrier sense (and sent anyway
+ * after LINK_LBT_MAX_DEFER_MS beyond the backoff). After a poll the controller
  * stays quiet until every reply slot has passed; after any other frame it
  * leaves a gap for the satellite's answer. See design/radio_security.md,
  * "Channel access".
@@ -40,9 +41,12 @@ struct ctrl_link_state {
 
 	uint8_t joined_mask;      /* bit n: slot n+1 has a session */
 	uint32_t polls;           /* sent */
+	uint32_t held;            /* frames held for a gap in another network's air time */
 	uint32_t poll_q_full;     /* poll requests refused */
 	uint32_t tx_q_full;       /* frames dropped before sending */
-	struct link_lbt_stats lbt;
+	struct link_csma_stats csma;
+	uint8_t util_pct;         /* channel busy, every network, last LINK_UTIL_WINDOW_S */
+	uint8_t foreign_nets;     /* other networks heard lately */
 	int64_t last_poll_end_us; /* when the last poll had been sent, link_now_us() */
 	int64_t last_rx_us;       /* reception of the last frame */
 };
@@ -66,6 +70,15 @@ int ctrl_link_send(uint8_t dst, const void *data, size_t len);
  * reply slots do not fit.
  */
 int ctrl_link_poll(uint8_t mask, const void *data, size_t len, size_t reply_len);
+
+/*
+ * When the next regular poll, @p period_ms after the last, should start,
+ * in k_uptime_get() ms: one period after the last poll actually went out
+ * (a poll held for another network keeps its new phase), moved toward the
+ * middle of the gap between the other networks' cycles
+ * (link_foreign_shift_us()). 0 while a queued poll has not gone out yet.
+ */
+int64_t ctrl_link_next_poll_ms(uint32_t period_ms);
 
 /* Report satellites in pairing mode as LSEC_EV_ADV while on. */
 void ctrl_link_scan(bool on);

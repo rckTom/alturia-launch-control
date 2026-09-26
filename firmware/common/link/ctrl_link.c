@@ -58,6 +58,18 @@ static struct ctrl_link_state counters;
 /* io_send is queueing the poll the link thread is sealing. */
 static const struct poll_req *sealing_poll;
 
+/* Other networks' air time, as far as we hear it. Written under lock, by the link thread. */
+static struct link_foreign foreign;
+/* How busy the channel is, every network counted. Guarded by lock. */
+static struct link_util util;
+
+/* Our last poll: when it started and how long its cycle was. Guarded by lock. */
+static int64_t poll_start_us;
+static uint32_t poll_len_us;
+/* Polls queued, and polls sent or dropped: equal when none is waiting. */
+static uint32_t polls_queued;
+static uint32_t polls_done;
+
 static K_THREAD_STACK_DEFINE(link_stack, LINK_STACK_SIZE);
 static struct k_thread link_thread;
 
@@ -140,6 +152,61 @@ static void update_profile(void)
 }
 
 /*
+ * How long after a controller frame of @p kind its satellite's answer may
+ * still be on the air, from the end of the frame: 0 for frames that draw
+ * no answer. The same for our frames and for other networks'.
+ */
+static uint32_t answer_window_us(int kind)
+{
+	size_t len;
+
+	switch (kind) {
+	case KIND_JOIN_REQ:
+		len = LINK_HDR + NONCE_JOIN + TAG_BYTES;   /* JOIN_RSP */
+		break;
+	case KIND_JOIN_OK:
+		len = SEAL_HDR + TAG_BYTES;                /* JOIN_ACK */
+		break;
+	case KIND_GROUP_UPDATE:
+		len = SEAL_HDR + 1 + TAG_BYTES;            /* GROUP_ACK */
+		break;
+	default:
+		return 0;
+	}
+	return (LINK_TURNAROUND_MS + ANSWER_DEFER_MS + tp->airtime_ms(len) + LINK_SLOT_GUARD_MS) *
+	       1000;
+}
+
+/* A frame from another network: learn when that network is on the air. */
+static void note_foreign(const uint8_t *buf, size_t len, const struct link_rx_info *info)
+{
+	struct lsec_hdr h;
+
+	if (lsec_parse_hdr(buf, len, &h) || KIND_IS_PAIR(h.kind) ||
+	    h.net_tag == (uint16_t)ctrl.net_id) {
+		return;
+	}
+
+	bool from_ctrl = h.src == LSEC_ADDR_CTRL;
+
+	link_foreign_heard(&foreign, h.net_tag, h.kind == KIND_POLL, from_ctrl,
+			   info->time_us - (int64_t)tp->airtime_ms(len) * 1000, info->time_us,
+			   from_ctrl ? answer_window_us(h.kind) : 0);
+}
+
+/* The air time a queued frame takes, with the answers it reserves. */
+static uint32_t need_us(const struct tx_frame *f, int kind)
+{
+	uint32_t air = tp->airtime_ms(f->len) * 1000;
+
+	if (f->poll) {
+		return air + link_replies_end_us(0, f->count, f->slot_ms) +
+		       LINK_SLOT_GUARD_MS * 1000;
+	}
+	return air + answer_window_us(kind);
+}
+
+/*
  * Send one queued frame, on the profile its kind belongs to: a PAIR_ABORT
  * queued as pairing ends must still reach a satellite listening at the
  * pairing profile. Returns how long to stay quiet afterwards.
@@ -157,13 +224,24 @@ static int64_t transmit(const struct tx_frame *f)
 	}
 	k_mutex_unlock(&lock);
 
-	/* A poll carries SAFE and FIRE: never wait on someone else for long. */
-	link_lbt_wait(tp, LINK_LBT_MAX_DEFER_MS * 1000, true, false, &counters.lbt);
+	/*
+	 * CSMA/CA: a random backoff that grows with the channel utilization,
+	 * so that controllers whose cycles line up do not also meet in the
+	 * same sense. A poll carries SAFE and FIRE: never wait on someone
+	 * else for long.
+	 */
+	link_csma_wait(tp, &link_csma_ctrl, &util, &lock, &counters.csma);
+
+	int64_t start = link_now_us();
 
 	ret = tp->send(f->buf, f->len);
 	if (ret) {
 		LOG_ERR("send: %d", ret);
 	}
+
+	k_mutex_lock(&lock, K_FOREVER);
+	link_util_add(&util, start, link_now_us());
+	k_mutex_unlock(&lock);
 
 	if (f->poll) {
 		int64_t end = link_now_us();
@@ -171,6 +249,13 @@ static int64_t transmit(const struct tx_frame *f)
 		k_mutex_lock(&lock, K_FOREVER);
 		counters.polls++;
 		counters.last_poll_end_us = end;
+		poll_start_us = start;
+		poll_len_us = end - start + link_replies_end_us(0, f->count, f->slot_ms) +
+			      LINK_SLOT_GUARD_MS * 1000;
+		if (IS_ENABLED(CONFIG_LINK_FOREIGN)) {
+			link_foreign_min_cycle(&foreign, poll_len_us);
+		}
+		polls_done++;
 		k_mutex_unlock(&lock);
 
 		/* Every slot, plus the guard for the last reply to arrive. */
@@ -194,12 +279,16 @@ static bool seal_next_poll(void)
 	while (!sealed && k_msgq_get(&poll_q, &req, K_NO_WAIT) == 0) {
 		/* The radio is on the pairing profile: the links wait, as in lsec. */
 		if (pairing_now()) {
+			polls_done++;
 			continue;
 		}
 
 		sealing_poll = &req;
 		sealed = lsec_ctrl_send_poll(&ctrl, req.mask, req.slot_ms, req.data, req.len) == 0;
 		sealing_poll = NULL;
+		if (!sealed) {
+			polls_done++;
+		}
 	}
 
 	k_mutex_unlock(&lock);
@@ -211,6 +300,11 @@ static void link_main(void *p1, void *p2, void *p3)
 	static uint8_t buf[LSEC_MAX_FRAME];
 	static struct tx_frame f;
 	int64_t quiet_until = 0;
+	/* f is dequeued and waits for a gap in the other networks' air time. */
+	bool held = false;
+	bool counted = false;
+	int64_t hold_until = 0;
+	int64_t hold_deadline = 0;
 
 	while (true) {
 		struct link_rx_info info = {0};
@@ -221,6 +315,8 @@ static void link_main(void *p1, void *p2, void *p3)
 		/* Listen through a poll's reply slots; otherwise just briefly. */
 		if (now < quiet_until) {
 			wait_us = quiet_until - now;
+		} else if (held) {
+			wait_us = hold_until > now ? hold_until - now : 0;
 		} else if (k_msgq_num_used_get(&tx_q) || k_msgq_num_used_get(&poll_q)) {
 			wait_us = 0;
 		} else {
@@ -234,22 +330,52 @@ static void link_main(void *p1, void *p2, void *p3)
 			last_rssi = info.rssi_dbm;
 			last_snr = info.snr_db;
 			counters.last_rx_us = info.time_us;
+			link_util_add(&util, info.time_us - (int64_t)tp->airtime_ms(len) * 1000,
+				      info.time_us);
+			if (IS_ENABLED(CONFIG_LINK_FOREIGN)) {
+				note_foreign(buf, len, &info);
+			}
 			lsec_ctrl_rx(&ctrl, buf, len, info.rssi_dbm, k_uptime_get());
 		}
 		lsec_ctrl_poll(&ctrl, k_uptime_get());
 		update_profile();
 		k_mutex_unlock(&lock);
 
-		if (link_now_us() < quiet_until) {
+		now = link_now_us();
+		if (now < quiet_until) {
 			continue;
 		}
 
-		if (k_msgq_get(&tx_q, &f, K_NO_WAIT) == 0 || (seal_next_poll() &&
-							      k_msgq_get(&tx_q, &f, K_NO_WAIT) == 0)) {
-			int64_t quiet = transmit(&f);
-
-			quiet_until = link_now_us() + quiet;
+		if (!held && (k_msgq_get(&tx_q, &f, K_NO_WAIT) == 0 ||
+			      (seal_next_poll() && k_msgq_get(&tx_q, &f, K_NO_WAIT) == 0))) {
+			held = true;
+			counted = false;
+			hold_deadline = now + LINK_FOREIGN_MAX_WAIT_MS * 1000;
 		}
+		if (!held) {
+			continue;
+		}
+
+		/* Pairing runs on its own profile, next to the devices. */
+		int kind = lsec_frame_kind(f.buf, f.len);
+		int64_t at = KIND_IS_PAIR(kind) || !IS_ENABLED(CONFIG_LINK_FOREIGN_HOLD)
+				     ? now
+				     : link_foreign_start(&foreign, now, need_us(&f, kind),
+							  MAX(hold_deadline - now, 0));
+
+		if (at > now) {
+			if (!counted) {
+				counted = true;
+				counters.held++;
+			}
+			hold_until = at;
+			continue;
+		}
+
+		held = false;
+		int64_t quiet = transmit(&f);
+
+		quiet_until = link_now_us() + quiet;
 	}
 }
 
@@ -266,6 +392,8 @@ int ctrl_link_init(link_event_cb cb, const struct link_transport *transport)
 
 	event_cb = cb;
 	tp = transport;
+	link_foreign_init(&foreign);
+	link_util_init(&util, link_now_us());
 
 	/* The network id is needed before the pairings can be loaded. */
 	ret = lsec_store_load(&net_id, NULL, NULL);
@@ -331,12 +459,34 @@ int ctrl_link_poll(uint8_t mask, const void *data, size_t len, size_t reply_len)
 			if (k_msgq_put(&poll_q, &req, K_NO_WAIT)) {
 				counters.poll_q_full++;
 				ret = -EBUSY;
+			} else {
+				polls_queued++;
 			}
 		}
 	}
 
 	k_mutex_unlock(&lock);
 	return ret;
+}
+
+int64_t ctrl_link_next_poll_ms(uint32_t period_ms)
+{
+	int64_t at = 0;
+
+	k_mutex_lock(&lock, K_FOREVER);
+	if (polls_queued == polls_done && poll_start_us) {
+		uint32_t period_us = period_ms * 1000;
+
+		at = poll_start_us + period_us;
+		if (IS_ENABLED(CONFIG_LINK_FOREIGN)) {
+			at += link_foreign_shift_us(&foreign, link_now_us(), poll_start_us,
+						    poll_len_us, period_us);
+		}
+		at = MAX(at / 1000, 1);
+	}
+	k_mutex_unlock(&lock);
+
+	return at;
 }
 
 void ctrl_link_scan(bool on)
@@ -424,5 +574,9 @@ void ctrl_link_state(struct ctrl_link_state *out)
 	out->snr_db = last_snr;
 	out->stats = ctrl.stats;
 	out->joined_mask = lsec_ctrl_joined_mask(&ctrl);
+	out->util_pct = link_util_pct(&util, link_now_us());
+	out->foreign_nets = IS_ENABLED(CONFIG_LINK_FOREIGN)
+				    ? link_foreign_count(&foreign, link_now_us())
+				    : 0;
 	k_mutex_unlock(&lock);
 }

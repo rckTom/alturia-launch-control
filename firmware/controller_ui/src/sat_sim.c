@@ -33,7 +33,7 @@
 #include "link_access.h"
 #include "link_sched.h"
 #include "link_transport.h"
-#include "link_wire.h"
+#include "sat_wire.h"
 #include "lsec.h"
 #include "pads.h"
 #include "sat_sim.h"
@@ -367,54 +367,59 @@ static void handle_cmd(int sat, const struct link_cmd *cmd, int64_t now)
 
 	s->last_heartbeat = now;
 
-	switch (cmd->type) {
-	case CMD_HEARTBEAT:
-		break;
-	case CMD_ARM:
-		if (st->state != SAT_SAFE) {
+	/* A request is executed once; a repeat is only answered. */
+	if (cmd->id != 0 && cmd->id != st->cmd_id) {
+		st->cmd_id = cmd->id;
+
+		switch (cmd->type) {
+		case CMD_HEARTBEAT:
+			break;
+		case CMD_ARM:
+			if (st->state != SAT_SAFE) {
+				break;
+			}
+			if (!st->key_armed || st->estop) {
+				LOG_WRN("sat %c: ARM refused, pad key %s, E-STOP %s", sat_name(sat),
+					st->key_armed ? "armed" : "safe",
+					st->estop ? "pressed" : "released");
+				return;
+			}
+			/*
+			 * Pre-arm check (spec 11.3): measure disarmed and refuse if an
+			 * output reads shorted, since a shorted FET plus the closed arm
+			 * relay would fire. The sim treats any short as a shorted FET.
+			 */
+			st->arm_refused = 0;
+			for (int ch = 0; ch < NUM_CHANNELS; ch++) {
+				if ((cmd->mask & BIT(ch)) && s->load_mohm[ch] < SHORT_BELOW_MOHM) {
+					st->arm_refused |= BIT(ch);
+				}
+			}
+			if (st->arm_refused) {
+				LOG_WRN("sat %c: ARM refused, shorted outputs 0x%02x", sat_name(sat),
+					st->arm_refused);
+				return;
+			}
+			st->state = SAT_ARMED;
+			st->armed_mask = cmd->mask;
+			LOG_INF("sat %c ARMED, mask 0x%02x", sat_name(sat), cmd->mask);
+			break;
+		case CMD_DISARM:
+			st->arm_refused = 0;
+			go_safe(sat, "disarm command");
+			return;
+		case CMD_FIRE:
+			if (st->state != SAT_ARMED || (cmd->mask & ~st->armed_mask) != 0) {
+				LOG_WRN("sat %c: FIRE refused, mask 0x%02x", sat_name(sat), cmd->mask);
+				return;
+			}
+			st->state = SAT_FIRING;
+			st->firing_mask = cmd->mask;
+			st->fire_count++;
+			s->fire_end = now + FIRE_PULSE_MS;
+			LOG_INF("sat %c FIRING, mask 0x%02x", sat_name(sat), cmd->mask);
 			break;
 		}
-		if (!st->key_armed || st->estop) {
-			LOG_WRN("sat %c: ARM refused, pad key %s, E-STOP %s", sat_name(sat),
-				st->key_armed ? "armed" : "safe",
-				st->estop ? "pressed" : "released");
-			return;
-		}
-		/*
-		 * Pre-arm check (spec 11.3): measure disarmed and refuse if an
-		 * output reads shorted, since a shorted FET plus the closed arm
-		 * relay would fire. The sim treats any short as a shorted FET.
-		 */
-		st->arm_refused = 0;
-		for (int ch = 0; ch < NUM_CHANNELS; ch++) {
-			if ((cmd->mask & BIT(ch)) && s->load_mohm[ch] < SHORT_BELOW_MOHM) {
-				st->arm_refused |= BIT(ch);
-			}
-		}
-		if (st->arm_refused) {
-			LOG_WRN("sat %c: ARM refused, shorted outputs 0x%02x", sat_name(sat),
-				st->arm_refused);
-			return;
-		}
-		st->state = SAT_ARMED;
-		st->armed_mask = cmd->mask;
-		LOG_INF("sat %c ARMED, mask 0x%02x", sat_name(sat), cmd->mask);
-		break;
-	case CMD_DISARM:
-		st->arm_refused = 0;
-		go_safe(sat, "disarm command");
-		return;
-	case CMD_FIRE:
-		if (st->state != SAT_ARMED || (cmd->mask & ~st->armed_mask) != 0) {
-			LOG_WRN("sat %c: FIRE refused, mask 0x%02x", sat_name(sat), cmd->mask);
-			return;
-		}
-		st->state = SAT_FIRING;
-		st->firing_mask = cmd->mask;
-		st->fire_count++;
-		s->fire_end = now + FIRE_PULSE_MS;
-		LOG_INF("sat %c FIRING, mask 0x%02x", sat_name(sat), cmd->mask);
-		break;
 	}
 
 	if (st->state != SAT_SAFE) {
@@ -549,16 +554,17 @@ static void sim_event(void *user, const struct lsec_event *ev)
 	struct sim *s = user;
 	int sat = s - sims;
 	struct link_cmd cmd;
+	bool full = false;
 
 	switch (ev->type) {
 	case LSEC_EV_POLL:
-		if (wire_decode_poll(ev->data, ev->len, ev->rank, ev->count, &cmd) == 0) {
+		if (wire_decode_poll(ev->data, ev->len, ev->rank, ev->count, &cmd, &full) == 0) {
 			handle_cmd(sat, &cmd, k_uptime_get());
 		}
 		/* The status reflects the command just applied. */
 		update_measurements(s);
 		s->st.seq++;
-		s->reply.len = wire_encode_status(&s->st, s->reply.buf);
+		s->reply.len = wire_encode_status(&s->st, full, s->reply.buf);
 		s->reply.at_us = link_slot_start_us(sim_rx_time_us, ev->rank, ev->slot_ms);
 		s->reply.pending = true;
 		break;

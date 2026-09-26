@@ -825,6 +825,44 @@ ZTEST(lsec, test_group_update_survives_loss)
 	zassert_equal(nodes[N_SAT1].datas, 1);
 }
 
+static bool drop_join_acks(int from, int to, uint8_t *buf, size_t *len)
+{
+	if (to == N_CTRL && lsec_frame_kind(buf, *len) == KIND_JOIN_ACK && drops > 0) {
+		drops--;
+		return false;
+	}
+	return true;
+}
+
+/* A lost JOIN_ACK: the controller resends JOIN_OK and the satellite acks again. */
+ZTEST(lsec, test_lost_join_ack_recovers)
+{
+	/* Set before pairing: the satellite joins while pair() lets it linger. */
+	drops = 2;
+	filter = drop_join_acks;
+	pair(N_SAT1, 1);
+	join(N_SAT1, 1);
+	tick(4 * LSEC_RESEND_MS);
+	zassert_equal(drops, 0);
+	zassert_false(ctrl.peer[1].ok_pending, "third JOIN_ACK not taken");
+}
+
+/* Repeating frames go out after 3/4 to 5/4 of their interval, spread. */
+ZTEST(lsec, test_retries_are_jittered)
+{
+	int64_t lo = INT64_MAX;
+	int64_t hi = INT64_MIN;
+
+	for (int i = 0; i < 400; i++) {
+		int64_t t = lsec_jittered(10000, LSEC_RESEND_MS);
+
+		zassert_true(t >= 10000 - LSEC_RESEND_MS / 4 && t <= 10000 + LSEC_RESEND_MS / 4);
+		lo = MIN(lo, t);
+		hi = MAX(hi, t);
+	}
+	zassert_true(hi - lo > LSEC_RESEND_MS / 3, "no spread");
+}
+
 ZTEST(lsec, test_repairing_replaces)
 {
 	/* Pair satellite 1 into slot 1, then again into slot 3. */

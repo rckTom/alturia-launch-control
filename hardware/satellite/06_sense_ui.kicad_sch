@@ -1708,10 +1708,6 @@
 		(uuid "5da2cdb4-f226-4f11-986e-a41f8632d0e2")
 	)
 	(no_connect
-		(at 254 90.17)
-		(uuid "7730e1ec-f503-4316-bb22-c8cb28a9c44d")
-	)
-	(no_connect
 		(at 142.24 92.71)
 		(uuid "812b2755-5010-42d6-883d-4e76086edf24")
 	)
@@ -2352,6 +2348,30 @@
 					(size 1.27 1.27)
 				)
 				(justify left)
+			)
+		)
+	)
+	(global_label "V_PYRO_SENSE"
+		(shape input)
+		(at 254 90.17 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "49290c62-5a48-4c8d-b213-fee14e6d66d9")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 236.9844 90.17 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
 			)
 		)
 	)

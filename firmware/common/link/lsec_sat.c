@@ -119,7 +119,7 @@ int lsec_sat_pair_start(struct lsec_sat *s, int64_t now)
 	s->pair.state = SP_ADV;
 	s->pair.uid = s->uid;
 	s->pair.started = now;
-	s->pair.last_adv = now;
+	s->pair.last_adv = lsec_jittered(now, LSEC_ADV_MS);
 
 	lsec_pair_hdr(buf, KIND_PAIR_ADV, s->uid);
 	tx(s, buf, sizeof(buf));
@@ -609,7 +609,7 @@ void lsec_sat_poll(struct lsec_sat *s, int64_t now)
 
 			lsec_pair_hdr(buf, KIND_PAIR_ADV, s->uid);
 			tx(s, buf, sizeof(buf));
-			p->last_adv = now;
+			p->last_adv = lsec_jittered(now, LSEC_ADV_MS);
 		}
 		return;
 	}
@@ -633,6 +633,6 @@ void lsec_sat_poll(struct lsec_sat *s, int64_t now)
 		lsec_link_hdr(buf, KIND_HELLO, s->pairing.net_id, s->pairing.slot,
 			      LSEC_ADDR_CTRL);
 		tx(s, buf, sizeof(buf));
-		s->last_hello = now;
+		s->last_hello = lsec_jittered(now, LSEC_HELLO_MS);
 	}
 }

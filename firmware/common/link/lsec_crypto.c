@@ -24,6 +24,16 @@ int lsec_random(void *buf, size_t len)
 	return psa_generate_random(buf, len) == PSA_SUCCESS ? 0 : -EIO;
 }
 
+int64_t lsec_jittered(int64_t now, uint32_t interval)
+{
+	uint32_t r;
+
+	if (interval < 4 || lsec_random(&r, sizeof(r))) {
+		return now;
+	}
+	return now + (int64_t)(r % (interval / 2 + 1)) - interval / 4;
+}
+
 bool lsec_equal(const void *a, const void *b, size_t len)
 {
 	const volatile uint8_t *x = a;

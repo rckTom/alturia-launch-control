@@ -9,8 +9,9 @@
  * The controller polls; the satellite speaks when asked. On LSEC_EV_POLL
  * the handler calls sat_link_reply(), and the link sends that reply in the
  * satellite's slot of the poll cycle, after listening that the channel is
- * clear. Everything else it sends (HELLO, join and pairing answers) waits
- * for a clear channel first. See design/radio_security.md, "Channel access".
+ * clear. Everything else it sends (HELLO, join and pairing answers) goes
+ * through CSMA/CA first, with a backoff that grows with the channel
+ * utilization this satellite measures. See design/radio_security.md, "Channel access".
  *
  * Every function may be called from any thread. Events arrive on the link
  * thread; a handler may call back into sat_link_*.
@@ -43,7 +44,8 @@ struct sat_link_state {
 	uint32_t replies;        /* sent in their slot */
 	uint32_t slot_busy;      /* slots skipped: someone else was on the air */
 	uint32_t slot_late;      /* slots skipped: missed their start */
-	struct link_lbt_stats lbt;   /* frames sent outside a slot */
+	struct link_csma_stats csma; /* every frame, slot replies included */
+	uint8_t util_pct;        /* channel busy as heard here, last LINK_UTIL_WINDOW_S */
 	int64_t last_poll_us;    /* reception of the last addressed poll, link_now_us() */
 	int64_t last_reply_us;   /* start of the last reply */
 };

@@ -66,6 +66,10 @@ static int cmd_link(const struct shell *sh, size_t argc, char **argv)
 	if (ls.paired) {
 		shell_print(sh, "slot %u", ls.slot);
 	}
+	shell_print(sh, "polls %u, replies %u, slots skipped: %u busy %u late", ls.polls,
+		    ls.replies, ls.slot_busy, ls.slot_late);
+	shell_print(sh, "channel %u%% busy, csma: senses busy %u, deferred %u, given up %u",
+		    ls.util_pct, ls.csma.busy, ls.csma.deferred, ls.csma.gave_up);
 	shell_print(sh, "rx ok %u, bad tag %u, replay %u, foreign %u, no session %u, malformed %u",
 		    ls.stats.rx_ok, ls.stats.bad_tag, ls.stats.replay, ls.stats.foreign,
 		    ls.stats.no_session, ls.stats.malformed);

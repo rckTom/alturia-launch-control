@@ -752,6 +752,12 @@ static void refresh_list_view(const struct ctrl_view *v, int64_t now)
 		lv_label_set_text(footer_label, "No pads available. Hold select for settings.");
 	} else if (v->arm_block) {
 		lv_label_set_text(footer_label, v->arm_block);
+	} else if (v->channel_crowded && v->other_nets) {
+		lv_label_set_text_fmt(footer_label, LV_SYMBOL_WARNING " Channel %u%% busy, %u other networks",
+				      v->channel_util, v->other_nets);
+	} else if (v->channel_crowded) {
+		lv_label_set_text_fmt(footer_label, LV_SYMBOL_WARNING " Channel %u%% busy",
+				      v->channel_util);
 	} else {
 		char list[PADS_FORMAT_LEN];
 

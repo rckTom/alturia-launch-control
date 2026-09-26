@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -118,10 +118,18 @@ def create_app(sim: Sim) -> FastAPI:
     # ------------------------------------------------------------------ state
 
     @app.get("/api/state")
-    async def state():
+    async def state(frames_since: int | None = None):
+        """The whole state. frames_since (sim time, us) trims the frame list.
+
+        Serialized with json.dumps: FastAPI's own encoder took ~200 ms for
+        2000 frames, and the event loop that delivers frames on time stood
+        still meanwhile (the firmware's reply slots start 6 ms after a poll).
+        """
         snap = sim.snapshot()
+        if frames_since is not None:
+            snap["frames"] = [f for f in snap["frames"] if f["t_start"] >= frames_since]
         snap["stats"] = sim.last_stats
-        return snap
+        return Response(json.dumps(snap), media_type="application/json")
 
     @app.get("/api/frames/{fid}")
     async def frame(fid: int):

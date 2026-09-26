@@ -40,8 +40,8 @@
         "other_text_upright": false,
         "pads": {
           "drill": 0.0,
-          "height": 0.95,
-          "width": 0.8
+          "height": 1.2,
+          "width": 2.2
         },
         "silk_line_width": 0.1,
         "silk_text_italic": false,
@@ -60,7 +60,7 @@
           "hatch_smoothing_level": 0,
           "hatch_smoothing_value": 0.1,
           "hatch_thickness": 1.0,
-          "min_clearance": 0.5,
+          "min_clearance": 0.25,
           "min_island_area": 10.0,
           "min_thickness": 0.25,
           "pad_connection": 2,
@@ -76,7 +76,12 @@
           "width": 0.0
         }
       ],
-      "drc_exclusions": [],
+      "drc_exclusions": [
+        [
+          "nonmirrored_text_on_back_layer|96905000|126875000|67943ad9-4aef-46d3-9638-d07ffeda5f74|00000000-0000-0000-0000-000000000000",
+          "This is ok and intended"
+        ]
+      ],
       "meta": {
         "version": 2
       },
@@ -211,6 +216,20 @@
       ],
       "track_widths": [
         0.0,
+        0.1,
+        0.2,
+        0.3,
+        0.4,
+        0.6,
+        0.8,
+        1.0,
+        1.2,
+        1.4,
+        1.6,
+        1.8,
+        2.0,
+        2.3,
+        2.6,
         3.0,
         5.0,
         10.0,
@@ -246,6 +265,10 @@
         {
           "diameter": 0.0,
           "drill": 0.0
+        },
+        {
+          "diameter": 0.8,
+          "drill": 0.4
         }
       ],
       "zones_allow_external_fillets": false
@@ -259,7 +282,18 @@
       "mpn": "",
       "sch_revision": "A"
     },
-    "layer_pairs": [],
+    "layer_pairs": [
+      {
+        "bottomLayer": 6,
+        "enabled": true,
+        "topLayer": 0
+      },
+      {
+        "bottomLayer": 2,
+        "enabled": false,
+        "topLayer": 0
+      }
+    ],
     "layer_presets": [],
     "viewports": []
   },
@@ -528,6 +562,21 @@
         "via_diameter": 0.6,
         "via_drill": 0.3,
         "wire_width": 6
+      },
+      {
+        "clearance": 0.35,
+        "diff_pair_gap": 0.25,
+        "diff_pair_width": 0.2,
+        "microvia_diameter": 0.3,
+        "microvia_drill": 0.1,
+        "name": "V_PYRO",
+        "pcb_color": "rgba(0, 0, 0, 0.000)",
+        "priority": 0,
+        "schematic_color": "rgba(0, 0, 0, 0.000)",
+        "track_width": 0.2,
+        "tuning_profile": "",
+        "via_diameter": 0.6,
+        "via_drill": 0.3
       }
     ],
     "meta": {
@@ -535,7 +584,12 @@
     },
     "net_colors": null,
     "netclass_assignments": null,
-    "netclass_patterns": []
+    "netclass_patterns": [
+      {
+        "netclass": "V_PYRO",
+        "pattern": "V_PYRO_ARMED"
+      }
+    ]
   },
   "pcbnew": {
     "last_paths": {
@@ -746,7 +800,7 @@
         "uuid": "db013cf7-f7e6-4620-95be-2f73be9ff323"
       }
     ],
-    "used_designators": "L1-2,L201-202,FB1-2,FB201,FB401,#FLG1-5,#FLG201-205,TP1-14,TP201-209,TP501-504,TP1201,R1-107,R201-208,R301-306,R401-404,R501-525,R601-612,R701-712,R801-814,R901-912,R1001-1006,R1101-1106,R1201-1216,R1301-1312,R1401-1412,#PWR1-251,#PWR301-321,#PWR401-410,#PWR501-572,#PWR601-608,#PWR701-708,#PWR801-811,#PWR901-908,#PWR1001-1008,#PWR1101-1108,#PWR1201-1252,#PWR1301-1305,#PWR1401-1405,BZ1,BZ1201,SW1-2,SW301,SW501,SW1201,HS1-2,HS1201-1202,Q1-19,Q101,Q201-202,Q401,Q501-503,Q601-603,Q701-703,Q801-806,Q901-903,Q1001,Q1101,Q1201,Q1301-1303,Q1401-1403,F1-2,F201-202,C1-61,C201-216,C301-303,C401-403,C501-510,C601-603,C701-703,C801-803,C901-903,C1001-1003,C1101-1103,C1201-1209,C1301,C1401,U1-16,U201-202,U301-302,U401,U501-506,U601-602,U701-702,U801-802,U901-902,U1201-1206,U1301-1302,U1401-1402,D1-37,D201-206,D301,D501-507,D601-603,D701-703,D801-803,D805,D901-903,D1001-1003,D1101-1103,D1201-1208,D1301-1302,D1401-1402,J1-29,J201-202,J301-302,J304,J401,J501-502,J601-603,J701-703,J801-803,J901-903,J1001-1003,J1101-1103,J1201-1202,J1301,J1401,K1-2,K201,K501-502",
+    "used_designators": "Q1-19,Q101,Q201-202,Q401,Q501-503,Q601-603,Q701-703,Q801-806,Q901-903,Q1001,Q1101,Q1201,Q1301-1303,Q1401-1403,HS1-2,HS1201-1202,BZ1,BZ1201,C1-61,C201-216,C301-303,C401-403,C501-510,C601-603,C701-703,C801-803,C901-903,C1001-1003,C1101-1103,C1201-1209,C1301,C1401,SW1-2,SW301,SW501,SW1201,F1-2,F201-202,U1-16,U201-202,U301-302,U401,U501-506,U601-602,U701-702,U801-802,U901-902,U1201-1206,U1301-1302,U1401-1402,D1-37,D201-206,D301,D501-507,D601-603,D701-703,D801-803,D805,D901-903,D1001-1003,D1101-1103,D1201-1208,D1301-1302,D1401-1402,L1-2,L201-202,FB1-2,FB201,FB401,#PWR1-251,#PWR301-321,#PWR401-410,#PWR501-572,#PWR601-608,#PWR701-708,#PWR801-811,#PWR901-908,#PWR1001-1008,#PWR1101-1108,#PWR1201-1252,#PWR1301-1305,#PWR1401-1405,J1-29,J201-202,J301-302,J304,J401,J501-502,J601-603,J701-703,J801-803,J901-903,J1001-1003,J1101-1103,J1201-1202,J1301,J1401,K1-2,K201,K501-502,TP1-14,TP201-209,TP501-504,TP1201,R1-112,R201-208,R301-306,R401-404,R501-525,R601-612,R701-712,R801-814,R901-912,R1001-1006,R1101-1106,R1201-1216,R1301-1312,R1401-1412,#FLG1-5,#FLG201-205,H1-2",
     "variants": []
   },
   "sheets": [

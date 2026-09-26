@@ -182,6 +182,26 @@ static void on_welcome(const struct rsim_welcome *m)
 	}
 }
 
+/*
+ * How late received frames are, after they ended on air: when the
+ * simulator's message arrived, and when the link thread took the frame.
+ * A reply slot starts a few ms after the poll, so either shows up as a
+ * missed slot.
+ */
+struct lateness {
+	int64_t max_us;
+	uint32_t n;
+	uint32_t over_3ms;
+};
+static struct lateness late_arrive, late_take;
+
+static void note_late(struct lateness *l, int64_t us)
+{
+	l->max_us = MAX(l->max_us, us);
+	l->n++;
+	l->over_3ms += us > 3000;
+}
+
 static void on_rx(const struct rsim_rx *m, int n)
 {
 	struct rx_packet pkt;
@@ -193,6 +213,7 @@ static void on_rx(const struct rsim_rx *m, int n)
 	pkt.info.rssi_dbm = m->rssi_dbm;
 	pkt.info.snr_db = m->snr_db;
 	pkt.info.time_us = host_to_local_us(m->t_end);
+	note_late(&late_arrive, (int64_t)local_now_us() - pkt.info.time_us);
 	pkt.len = m->len;
 	memcpy(pkt.data, m->data, m->len);
 
@@ -586,6 +607,7 @@ int radio_recv(void *buf, size_t size, k_timeout_t timeout, struct radio_rx_info
 		return -EMSGSIZE;
 	}
 
+	note_late(&late_take, (int64_t)local_now_us() - pkt.info.time_us);
 	memcpy(buf, pkt.data, pkt.len);
 	*info = pkt.info;
 	return pkt.len;
@@ -759,6 +781,12 @@ static int cmd_rsim(const struct shell *sh, size_t argc, char **argv)
 	lag_max_us = INT64_MIN;
 	lag_sum_us = 0;
 	lag_n = 0;
+	shell_print(sh, "frames late after their end: arrived max %lld us, %u of %u over 3 ms; "
+		    "taken max %lld us, %u of %u over 3 ms",
+		    late_arrive.max_us, late_arrive.over_3ms, late_arrive.n, late_take.max_us,
+		    late_take.over_3ms, late_take.n);
+	late_arrive = (struct lateness){0};
+	late_take = (struct lateness){0};
 	return 0;
 }
 

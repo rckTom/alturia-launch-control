@@ -165,6 +165,9 @@ struct ctrl_view {
 	enum msg_level message_level;
 	int64_t message_time;
 	bool fault_active;        /* the last fault still needs a SAFE press */
+	uint8_t channel_util;     /* % busy, every network counted */
+	uint8_t other_nets;       /* other controllers' networks heard */
+	bool channel_crowded;     /* commands may take several tries */
 };
 
 void ctrl_tick(void);

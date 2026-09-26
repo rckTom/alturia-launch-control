@@ -102,6 +102,7 @@ def compute(m: Medium) -> dict:
         "outcomes_10s": dict(outcomes),
         "links": link_list,
         "polls": poll_stats(frames, now),
+        "joins": join_stats(frames, now),
     }
 
 
@@ -145,3 +146,57 @@ def poll_stats(frames: list[Transmission], now: int) -> list[dict]:
             "replies": {str(s): round(n / len(ps), 3) for s, n in sorted(slots.items())},
         })
     return out
+
+
+def join_stats(frames: list[Transmission], now: int) -> list[dict]:
+    """Per network and satellite slot, over 60 s: session joins.
+
+    An attempt is a JOIN_REQ from the controller to that slot. A join is
+    a JOIN_ACK from the slot that its controller received. The join time
+    runs from the first JOIN_REQ after the previous join (or after the
+    window starts) to that JOIN_ACK.
+    """
+    lo = now - 60_000_000
+    ctrl_of: dict[str, int] = {}
+    seq: dict[tuple[str, int], list[Transmission]] = defaultdict(list)
+    for t in sorted(frames, key=lambda t: t.t_start):
+        if t.t_start < lo:
+            continue
+        info = t.info or {}
+        tag = info.get("net_tag")
+        kind = info.get("kind")
+        if tag is None:
+            continue
+        if kind in ("JOIN_REQ", "JOIN_OK", "POLL"):
+            ctrl_of[tag] = t.src
+        if kind == "JOIN_REQ":
+            seq[(tag, info.get("dst", 0))].append(t)
+        elif kind == "JOIN_ACK":
+            seq[(tag, info.get("src", 0))].append(t)
+
+    out = []
+    for (tag, slot), ts in seq.items():
+        ctrl = ctrl_of.get(tag)
+        attempts = joins = 0
+        first_req = None
+        last_join_ms = None
+        for t in ts:
+            if t.info["kind"] == "JOIN_REQ":
+                attempts += 1
+                if first_req is None:
+                    first_req = t.t_start
+            elif t.results and any(r["node"] == ctrl and r["outcome"] == "ok" for r in t.results):
+                joins += 1
+                if first_req is not None:
+                    last_join_ms = round((_end(t, now) - first_req) / 1000)
+                first_req = None
+        out.append({
+            "net_tag": tag,
+            "ctrl": ctrl,
+            "slot": slot,
+            "attempts": attempts,
+            "joins": joins,
+            "last_join_ms": last_join_ms,
+            "joining": first_req is not None,
+        })
+    return sorted(out, key=lambda j: (j["net_tag"], j["slot"]))

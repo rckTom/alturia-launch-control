@@ -25,3 +25,19 @@ def test_utilization_of_a_poll_cycle(air):
     assert poll["net_tag"] == "1234" and abs(poll["period_ms"] - 250) < 1
     assert poll["replies"] == {"1": 1.0, "2": 1.0}
     assert st["sources"][str(ctrl.id)]["frames_10s"] == 40
+
+
+def test_join_time(air):
+    ctrl = air.node("ctrl", 0, 0)
+    sat = air.node("sat", 50, 0)
+    req = b"\x51\x34\x12\x00\x01" + bytes(8)          # JOIN_REQ to slot 1
+    ack = b"\x61\x34\x12\x01\x00" + bytes(13)         # JOIN_ACK from slot 1
+    air.tx(ctrl, req, airtime_us=23_000)
+    air.advance(2_000_000)
+    air.tx(ctrl, req, airtime_us=23_000)                   # a retry
+    air.advance(30_000)
+    air.tx(sat, ack, airtime_us=26_000)
+    air.advance(30_000)
+    (j,) = stats.compute(air.m)["joins"]
+    assert (j["net_tag"], j["slot"], j["attempts"], j["joins"]) == ("1234", 1, 2, 1)
+    assert j["last_join_ms"] == 2_056 and not j["joining"]

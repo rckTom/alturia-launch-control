@@ -6,28 +6,54 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/random/random.h>
 
 #include "controller.h"
 #include "inputs.h"
 
 LOG_MODULE_REGISTER(controller, LOG_LEVEL_INF);
 
-#define LINK_TIMEOUT_MS     1500
-#define TX_PERIOD_MS        250
+/* A satellite goes SAFE after this long without a poll; so is it gone for us. */
+#define LINK_TIMEOUT_MS     CONFIG_LINK_SAT_SAFE_TIMEOUT_MS
+#define POLL_PERIOD_MS      CONFIG_APP_POLL_PERIOD_MS
+#define RETRY_MS            CONFIG_APP_CMD_RETRY_MS
+#define RETRY_JITTER_MS     100
+/* Unacknowledged requests are retried this long; then the fault handling decides. */
+#define RETRY_FOR_MS        5000
 #define ARM_ACK_TIMEOUT_MS  2000
 #define FIRE_ACK_TIMEOUT_MS 3000
 #define ARM_TIMEOUT_MS      (CONFIG_APP_ARM_TIMEOUT_S * 1000)
 #define LINK_STABLE_MS      2000  /* link needed this long before pads return */
+/* Channel utilization that makes the channel crowded, and clears it again */
+#define CROWDED_PCT         70
+#define UNCROWDED_PCT       55
 
 static struct ctrl_view v = {
 	.sat = {[0 ... NUM_SATS - 1] = {.ok_since = -1}},
 };
 
 static int64_t next_tx;
+/* The last poll was a regular one: time the next from when it actually went out. */
+static bool anchor_pending;
 static int64_t ack_deadline;   /* ARMING / FIRING acknowledgement */
 static int64_t arm_deadline;   /* inactivity timeout while ARMED */
 static int64_t fire_hold_start = -1;
 static bool fire_was_held;
+
+/*
+ * Per satellite, the request it has to acknowledge (common/wire/sat_wire.h):
+ * the poll carries it until the satellite's status reports its id. A new
+ * request replaces an unacknowledged one. id 0: nothing pending.
+ */
+struct request {
+	enum link_cmd_type type;
+	uint8_t mask;
+	uint8_t id;
+	int64_t since;
+};
+
+static struct request req[NUM_SATS];
+static uint8_t last_req_id;
 
 /* Per satellite, latched when arming: channels of the selected pads */
 static uint8_t arm_mask[NUM_SATS];
@@ -111,50 +137,129 @@ static uint8_t valves_for(int sat)
 	return valves;
 }
 
-static struct link_cmd cmd_for(int sat, enum link_cmd_type type, uint8_t mask)
+static struct link_cmd cmd_for(int sat, enum link_cmd_type type, uint8_t mask, uint8_t id)
 {
 	return (struct link_cmd){
 		.type = type,
 		.mask = mask,
 		.valves = involved(sat) ? valves_for(sat) : 0,
+		.id = id,
 	};
 }
 
-/* What every satellite gets in a poll unless something happens. */
+/* Ask satellite sat for something; the polls repeat it until acknowledged. */
+static void request(int sat, enum link_cmd_type type, uint8_t mask)
+{
+	/*
+	 * Ids start at random, so that after a controller reboot the first
+	 * request is not taken for the satellite's last one. Never 0.
+	 */
+	if (last_req_id == 0) {
+		last_req_id = sys_rand8_get();
+	}
+	last_req_id = last_req_id == UINT8_MAX ? 1 : last_req_id + 1;
+
+	req[sat] = (struct request){
+		.type = type,
+		.mask = mask,
+		.id = last_req_id,
+		.since = k_uptime_get(),
+	};
+}
+
+/* The satellite has executed (or answered) request sat's current request. */
+static bool acked(int sat)
+{
+	return req[sat].id == 0 || (v.sat[sat].have_status && v.sat[sat].st.cmd_id == req[sat].id);
+}
+
+/*
+ * Something still has to reach a joined satellite, or come back from it:
+ * a request without its acknowledgement, valves it has not applied yet, or
+ * the status that confirms ARM or the end of a fire pulse.
+ */
+static bool retrying(int64_t now)
+{
+	for (int sat = 0; sat < NUM_SATS; sat++) {
+		const struct sat_view *s = &v.sat[sat];
+
+		if (!s->joined) {
+			continue;
+		}
+		if ((v.state == CTRL_ARMING || v.state == CTRL_FIRING) && involved(sat)) {
+			return true;
+		}
+		if (!acked(sat) && now - req[sat].since < RETRY_FOR_MS) {
+			return true;
+		}
+		if (v.state == CTRL_ARMED && involved(sat) && s->have_status &&
+		    s->st.valve_mask != (valves_for(sat) & s->st.armed_mask)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/* What every satellite gets in a poll. */
 static void build_cmds(struct link_cmd cmds[NUM_SATS])
 {
 	for (int sat = 0; sat < NUM_SATS; sat++) {
-		if (v.state == CTRL_ARMING && involved(sat)) {
-			/* ARM is idempotent on the satellite, so resending is safe */
-			cmds[sat] = cmd_for(sat, CMD_ARM, arm_mask[sat]);
-		} else if (!involved(sat) && v.sat[sat].have_status &&
-			   v.sat[sat].st.state != SAT_SAFE) {
+		if (acked(sat) && !involved(sat) && v.sat[sat].have_status &&
+		    v.sat[sat].st.state != SAT_SAFE) {
 			/* We think it is safe: make sure the satellite agrees */
-			cmds[sat] = cmd_for(sat, CMD_DISARM, 0);
+			request(sat, CMD_DISARM, 0);
+		}
+		if (!acked(sat)) {
+			cmds[sat] = cmd_for(sat, req[sat].type, req[sat].mask, req[sat].id);
 		} else {
-			cmds[sat] = cmd_for(sat, CMD_HEARTBEAT, 0);
+			cmds[sat] = cmd_for(sat, CMD_HEARTBEAT, 0, 0);
 		}
 	}
 }
 
-/* One poll carries every satellite's command; each answers with its status. */
-static void poll_now(const struct link_cmd cmds[NUM_SATS])
+/* Satellites whose full status is wanted with the next poll. */
+static bool want_full[NUM_SATS];
+
+/*
+ * One poll carries every satellite's command; each answers with its
+ * status. While a request waits for its acknowledgement the polls come
+ * every RETRY_MS, with some jitter so that they do not keep meeting
+ * another network's cycle at the same point; otherwise every
+ * POLL_PERIOD_MS.
+ */
+static void send_poll(void)
 {
-	int ret = link_poll(cmds);
+	struct link_cmd cmds[NUM_SATS];
+	int64_t now = k_uptime_get();
+	bool full = false;
+	int ret;
+
+	/*
+	 * Replies are the short status; a satellite that has just joined
+	 * sends its full one once, with the resistances and link quality.
+	 */
+	for (int sat = 0; sat < NUM_SATS; sat++) {
+		full |= want_full[sat] && v.sat[sat].joined;
+	}
+
+	build_cmds(cmds);
+	ret = link_poll(cmds, full);
+	if (ret == 0 && full) {
+		memset(want_full, 0, sizeof(want_full));
+	}
 
 	/* Nobody joined is normal; a backlog means the cycle is too long. */
 	if (ret == -EBUSY) {
 		LOG_WRN("poll dropped, link busy");
 	}
-	next_tx = k_uptime_get() + TX_PERIOD_MS;
-}
-
-static void send_heartbeats(void)
-{
-	struct link_cmd cmds[NUM_SATS];
-
-	build_cmds(cmds);
-	poll_now(cmds);
+	/* Only a poll that was queued has a start to time the next one from. */
+	if (retrying(now)) {
+		anchor_pending = false;
+		next_tx = now + RETRY_MS + sys_rand16_get() % (RETRY_JITTER_MS + 1);
+	} else {
+		anchor_pending = ret == 0;
+		next_tx = now + POLL_PERIOD_MS;
+	}
 }
 
 static void set_all_ops(enum hybrid_op op)
@@ -167,15 +272,13 @@ static void set_all_ops(enum hybrid_op op)
 /* Disarm everything. Hybrid vents open by themselves once unpowered. */
 static void disarm_all(void)
 {
-	struct link_cmd cmds[NUM_SATS];
-
 	for (int sat = 0; sat < NUM_SATS; sat++) {
-		cmds[sat] = cmd_for(sat, CMD_DISARM, 0);
+		request(sat, CMD_DISARM, 0);
 		arm_mask[sat] = 0;
 	}
-	poll_now(cmds);
 	set_all_ops(HYB_CLOSED);
 	set_state(CTRL_SAFE);
+	send_poll();
 }
 
 /* Disarm everything and show a fault that stays until SAFE is pressed */
@@ -322,9 +425,10 @@ static void request_arm(void)
 	for (int sat = 0; sat < NUM_SATS; sat++) {
 		if (involved(sat)) {
 			cmd_seq[sat] = v.sat[sat].st.seq;
+			request(sat, CMD_ARM, arm_mask[sat]);
 		}
 	}
-	send_heartbeats();   /* ARM, now that the state is ARMING */
+	send_poll();
 	ack_deadline = k_uptime_get() + ARM_ACK_TIMEOUT_MS;
 	message(MSG_INFO, "Arming...");
 }
@@ -396,7 +500,7 @@ static void request_valve(enum hybrid_op op)
 	}
 
 	arm_deadline = now + ARM_TIMEOUT_MS;
-	send_heartbeats(); /* carries the new valve state */
+	send_poll(); /* carries the new valve state, repeated until applied */
 }
 
 struct ctrl_req {
@@ -914,7 +1018,8 @@ static void tick_arming(int64_t now)
 			v.fault_active = true;
 			return;
 		}
-		if (involved(sat) && !(fresh(sat) && v.sat[sat].st.state == SAT_ARMED)) {
+		if (involved(sat) &&
+		    !(acked(sat) && fresh(sat) && v.sat[sat].st.state == SAT_ARMED)) {
 			all_armed = false;
 			if (now >= ack_deadline) {
 				fault("Satellite %c did not acknowledge ARM", sat);
@@ -934,11 +1039,9 @@ static void tick_arming(int64_t now)
 static void start_fire(int64_t now)
 {
 	char list[PADS_FORMAT_LEN];
-	struct link_cmd cmds[NUM_SATS];
 
 	/* LAUNCH stops a running fill; vents stay closed during the pulse */
 	set_all_ops(HYB_CLOSED);
-	build_cmds(cmds);
 
 	for (int sat = 0; sat < NUM_SATS; sat++) {
 		uint8_t ign = 0;
@@ -953,11 +1056,11 @@ static void start_fire(int64_t now)
 		}
 		fire_count[sat] = v.sat[sat].st.fire_count;
 		cmd_seq[sat] = v.sat[sat].st.seq;
-		cmds[sat] = cmd_for(sat, CMD_FIRE, ign);
+		/* Repeated until acknowledged: the request id keeps it to one pulse. */
+		request(sat, CMD_FIRE, ign);
 	}
 
-	/* One poll, on purpose: a retry could fire twice. */
-	poll_now(cmds);
+	send_poll();
 
 	ack_deadline = now + FIRE_ACK_TIMEOUT_MS;
 	set_state(CTRL_FIRING);
@@ -1029,7 +1132,7 @@ static void tick_firing(int64_t now)
 		if (!involved(sat)) {
 			continue;
 		}
-		if (!fresh(sat) || st->fire_count == fire_count[sat] ||
+		if (!acked(sat) || !fresh(sat) || st->fire_count == fire_count[sat] ||
 		    st->state == SAT_FIRING) {
 			done = false;
 			if (now >= ack_deadline) {
@@ -1046,16 +1149,41 @@ static void tick_firing(int64_t now)
 	}
 }
 
+/* Warn when the shared channel fills up: every network's commands slow down. */
+static void update_channel(void)
+{
+	link_channel(&v.channel_util, &v.other_nets);
+
+	if (!v.channel_crowded && v.channel_util >= CROWDED_PCT) {
+		v.channel_crowded = true;
+		if (v.other_nets) {
+			message(MSG_WARN, "Channel crowded: %u%% busy, %u other network%s",
+				v.channel_util, v.other_nets, v.other_nets == 1 ? "" : "s");
+		} else {
+			message(MSG_WARN, "Channel crowded: %u%% busy", v.channel_util);
+		}
+	} else if (v.channel_crowded && v.channel_util < UNCROWDED_PCT) {
+		v.channel_crowded = false;
+	}
+}
+
 void ctrl_tick(void)
 {
 	int64_t now = k_uptime_get();
+
+	update_channel();
 
 	for (int sat = 0; sat < NUM_SATS; sat++) {
 		struct sat_view *s = &v.sat[sat];
 		int64_t rx = link_last_status(sat, &s->st);
 
 		s->uid = link_paired_uid(sat);
+		bool was_joined = s->joined;
+
 		s->joined = link_joined(sat);
+		if (s->joined && !was_joined) {
+			want_full[sat] = true;
+		}
 		s->have_status = rx >= 0;
 		s->link_ok = s->have_status && now - rx < LINK_TIMEOUT_MS;
 
@@ -1118,8 +1246,21 @@ void ctrl_tick(void)
 		v.arm_timer_paused = false;
 	}
 
+	/*
+	 * A regular poll comes a period after the last one went out, moved
+	 * into the gap between other networks' polls (DESYNC), so that
+	 * networks sharing the channel settle into turns.
+	 */
+	if (anchor_pending) {
+		int64_t at = link_next_poll_ms(POLL_PERIOD_MS);
+
+		if (at > 0) {
+			next_tx = at;
+			anchor_pending = false;
+		}
+	}
 	if (now >= next_tx) {
-		send_heartbeats();
+		send_poll();
 	}
 }
 

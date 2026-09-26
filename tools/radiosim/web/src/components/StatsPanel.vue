@@ -60,6 +60,22 @@ const outcomes = computed(() => {
       </table>
     </div>
 
+    <div v-if="s?.joins?.length" class="block">
+      <table class="small">
+        <tr><th>joins, 60 s</th><th>slot</th><th>tries</th><th>joined</th><th>took</th></tr>
+        <tr v-for="j in s.joins" :key="j.net_tag + j.slot">
+          <td class="mono">{{ j.ctrl !== null ? nodeName(j.ctrl) : '?' }} <span class="muted">{{ j.net_tag }}</span></td>
+          <td>{{ String.fromCharCode(64 + j.slot) }}</td>
+          <td>{{ j.attempts }}</td>
+          <td :style="{ color: j.joins ? 'var(--ok)' : 'var(--danger)' }">{{ j.joins }}</td>
+          <td>
+            <span v-if="j.last_join_ms !== null">{{ (j.last_join_ms / 1000).toFixed(1) }} s</span>
+            <span v-if="j.joining" class="muted"> joining…</span>
+          </td>
+        </tr>
+      </table>
+    </div>
+
     <div v-if="outcomes.total" class="block">
       <div class="stack">
         <span v-for="[k, v] in outcomes.list" :key="k" :title="`${outcomeLabel[k]}: ${v}`"

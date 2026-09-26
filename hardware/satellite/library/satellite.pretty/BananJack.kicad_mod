@@ -7,7 +7,7 @@
 		(at 10 -4.475 0)
 		(unlocked yes)
 		(layer "F.SilkS")
-		(uuid "0e791304-d600-43c4-88a7-fe110b7d31c7")
+		(uuid "7586b942-0069-491a-999c-913066d6e0e7")
 		(effects
 			(font
 				(size 1 1)
@@ -19,7 +19,7 @@
 		(at -2.5 -7.475 0)
 		(unlocked yes)
 		(layer "F.Fab")
-		(uuid "e9976913-1680-46bc-96f7-43346429b8b8")
+		(uuid "6237d091-80cb-4d84-b4e0-b001de15650f")
 		(effects
 			(font
 				(size 1 1)
@@ -32,7 +32,7 @@
 		(unlocked yes)
 		(layer "F.Fab")
 		(hide yes)
-		(uuid "97da8c18-d18f-4f5d-8480-f56729e755df")
+		(uuid "0fc0e860-4bca-4b8a-b1d7-46c32ad6280e")
 		(effects
 			(font
 				(size 1 1)
@@ -45,7 +45,7 @@
 		(unlocked yes)
 		(layer "F.Fab")
 		(hide yes)
-		(uuid "4a2e1d47-3168-4e3b-af63-242302eec1ad")
+		(uuid "8481dac1-0ff6-4978-b97c-f2ef8560365e")
 		(effects
 			(font
 				(size 1 1)
@@ -55,55 +55,77 @@
 	)
 	(attr smd)
 	(duplicate_pad_numbers_are_jumpers no)
-	(fp_circle
-		(center 0 0)
-		(end 6 0)
+	(fp_arc
+		(start -4.257346 -4.257346)
+		(mid 0 -6.020796)
+		(end 4.257346 -4.257346)
 		(stroke
 			(width 0.1)
 			(type default)
 		)
-		(fill no)
 		(layer "F.SilkS")
-		(uuid "3e3db8a8-f96f-4244-8c93-7fe9c062277f")
+		(uuid "7e1d973c-74de-4b83-a064-bac59ececa7a")
 	)
-	(fp_circle
-		(center 9.5 8)
-		(end 15.5 8)
+	(fp_arc
+		(start 4.257346 4.25735)
+		(mid 0 6.0208)
+		(end -4.257346 4.25735)
 		(stroke
 			(width 0.1)
 			(type default)
 		)
-		(fill no)
 		(layer "F.SilkS")
-		(uuid "a12c7ed7-39f3-4851-89e5-772f056c3a9c")
+		(uuid "a7377011-06ea-472a-8ee4-0607df837fb9")
+	)
+	(fp_arc
+		(start 5.242654 3.742654)
+		(mid 9.5 1.979204)
+		(end 13.757346 3.742654)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "F.SilkS")
+		(uuid "85c0caa7-8ac9-4cb1-9450-f75e63fe2c0e")
+	)
+	(fp_arc
+		(start 13.757346 12.25735)
+		(mid 9.5 14.0208)
+		(end 5.242654 12.25735)
+		(stroke
+			(width 0.1)
+			(type default)
+		)
+		(layer "F.SilkS")
+		(uuid "69bbc232-a24c-4eeb-ac90-2903b6f51b13")
 	)
 	(fp_circle
 		(center 0 0.025)
-		(end 6 0.025)
+		(end 4.5 0.025)
 		(stroke
 			(width 0.05)
 			(type default)
 		)
 		(fill no)
 		(layer "F.CrtYd")
-		(uuid "964d764f-56dd-481b-90df-9fdd9847afa1")
+		(uuid "ee8b81ee-5be4-42eb-ada0-bb99d21716d3")
 	)
 	(fp_circle
 		(center 9.5 8)
-		(end 15.5 8)
+		(end 14 8)
 		(stroke
 			(width 0.05)
 			(type default)
 		)
 		(fill no)
 		(layer "F.CrtYd")
-		(uuid "fca0bcc4-3920-47b1-bc35-09b86035d5d7")
+		(uuid "a6e95a60-92fd-486b-ad6d-433de28bd791")
 	)
 	(fp_text user "${REFERENCE}"
 		(at 15 -2.5 0)
 		(unlocked yes)
 		(layer "F.Fab")
-		(uuid "e205dbe7-5b9a-4244-b923-ffb3326b90a5")
+		(uuid "887c5772-b009-4357-9f5f-9b47fa6eddc8")
 		(effects
 			(font
 				(size 1 1)
@@ -117,7 +139,7 @@
 		(drill 4)
 		(layers "*.Cu" "*.Mask")
 		(remove_unused_layers no)
-		(uuid "8d2be3a3-5c44-4d15-8600-ef73e42782c6")
+		(uuid "0989752c-9356-40fb-8dbc-2a2910f0474d")
 	)
 	(pad "2" thru_hole circle
 		(at 9.5 8.025)
@@ -125,7 +147,7 @@
 		(drill 4)
 		(layers "*.Cu" "*.Mask")
 		(remove_unused_layers no)
-		(uuid "d584b73e-9e69-48f5-9266-f80a3b94deb4")
+		(uuid "97420004-f0fd-41b5-a6ef-27f8677a00e4")
 	)
 	(embedded_fonts no)
 	(model "${KIPRJMOD}/cad/banana_jack.step"

@@ -4,6 +4,10 @@
  * arbitrary where the Nucleo has no equivalent; only the device set matters.
  *
  * The SX1262 comes from the semtech_sx1262mb2das shield on arduino_spi.
+ * Its RF switch is driven the way the board's Wio-SX1262 needs: DIO2
+ * selects TX and antenna-enable-gpios powers the switch. The board port
+ * adds dio3-tcxo-voltage = <SX126X_DIO3_TCXO_1V8> and puts
+ * antenna-enable-gpios on PC13 (LORA_RF_SW).
  */
 
 #include <zephyr/dt-bindings/gpio/gpio.h>

@@ -29,7 +29,7 @@ static void pair_tx(struct lsec_ctrl *c, const uint8_t *buf, size_t len, int64_t
 {
 	memcpy(c->pair.last_frame, buf, len);
 	c->pair.last_len = len;
-	c->pair.last_tx = now;
+	c->pair.last_tx = lsec_jittered(now, LSEC_PAIR_RETRY_MS);
 	tx(c, buf, len);
 }
 
@@ -42,6 +42,7 @@ static void peer_clear(struct lsec_ctrl_peer *peer)
 {
 	lsec_wipe(peer, sizeof(*peer));
 	peer->hs.sent = LSEC_NEVER;
+	peer->join_retry_from = LSEC_NEVER;
 }
 
 /* End the session but keep the pairing, so the satellite can join again. */
@@ -56,6 +57,7 @@ static void peer_drop_session(struct lsec_ctrl_peer *peer)
 	lsec_wipe(&peer->rx, sizeof(peer->rx));
 	/* Start the rejoin at once rather than after JOIN_RETRY. */
 	peer->hs.sent = LSEC_NEVER;
+	peer->join_retry_from = LSEC_NEVER;
 }
 
 static void send_sealed(struct lsec_ctrl *c, uint8_t slot, enum lsec_kind kind,
@@ -77,7 +79,7 @@ static void send_group_update(struct lsec_ctrl *c, uint8_t slot, int64_t now)
 
 	lsec_group_body(&c->group, body);
 	send_sealed(c, slot, KIND_GROUP_UPDATE, body, sizeof(body));
-	c->peer[slot].gtk_sent = now;
+	c->peer[slot].gtk_sent = lsec_jittered(now, LSEC_RESEND_MS);
 	lsec_wipe(body, sizeof(body));
 }
 
@@ -455,6 +457,7 @@ static void join_start(struct lsec_ctrl *c, uint8_t slot, int64_t now)
 
 	peer->hs.pending = true;
 	peer->hs.sent = now;
+	peer->join_retry_from = lsec_jittered(now, LSEC_JOIN_RETRY_MS);
 
 	lsec_link_hdr(buf, KIND_JOIN_REQ, c->net_id, LSEC_ADDR_CTRL, slot);
 	memcpy(buf + LINK_HDR, peer->hs.nc, NONCE_JOIN);
@@ -470,7 +473,7 @@ static void send_join_ok(struct lsec_ctrl *c, uint8_t slot, int64_t now)
 	send_sealed(c, slot, KIND_JOIN_OK, body, sizeof(body));
 	lsec_wipe(body, sizeof(body));
 
-	peer->ok_sent = now;
+	peer->ok_sent = lsec_jittered(now, LSEC_RESEND_MS);
 	peer->ok_tries++;
 }
 
@@ -735,7 +738,7 @@ void lsec_ctrl_poll(struct lsec_ctrl *c, int64_t now)
 		}
 
 		if (!peer->joined && !peer->ok_pending &&
-		    lsec_due(now, peer->hs.sent, LSEC_JOIN_RETRY_MS)) {
+		    lsec_due(now, peer->join_retry_from, LSEC_JOIN_RETRY_MS)) {
 			join_start(c, slot, now);
 		}
 

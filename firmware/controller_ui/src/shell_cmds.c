@@ -14,6 +14,7 @@
 #include <zephyr/shell/shell.h>
 
 #include "controller.h"
+#include "ctrl_link.h"
 #include "inputs.h"
 #include "link.h"
 #include "pads.h"
@@ -216,6 +217,26 @@ static int cmd_ctrl_kbd(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+static int cmd_ctrl_link(const struct shell *sh, size_t argc, char **argv)
+{
+	struct ctrl_link_state ls;
+
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+	ctrl_link_state(&ls);
+	shell_print(sh, "network %08x, joined 0x%02x%s%s", ls.net_id, ls.joined_mask,
+		    ls.scanning ? ", scanning" : "", ls.pairing ? ", pairing" : "");
+	shell_print(sh, "channel %u%% busy, %u other network%s", ls.util_pct, ls.foreign_nets,
+		    ls.foreign_nets == 1 ? "" : "s");
+	shell_print(sh, "polls %u, held for other networks %u", ls.polls, ls.held);
+	shell_print(sh, "csma: senses busy %u, frames deferred %u, sent anyway %u", ls.csma.busy,
+		    ls.csma.deferred, ls.csma.forced);
+	shell_print(sh, "rx ok %u, bad tag %u, replay %u, foreign %u, no session %u, malformed %u",
+		    ls.stats.rx_ok, ls.stats.bad_tag, ls.stats.replay, ls.stats.foreign,
+		    ls.stats.no_session, ls.stats.malformed);
+	return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(ctrl_cmds,
 	SHELL_CMD(kbd, NULL, "Keyboard mode: drive the controls with single keys", cmd_ctrl_kbd),
 	SHELL_CMD_ARG(key, NULL, "Controller arm key <on|off>", cmd_ctrl_key, 2, 0),
@@ -228,6 +249,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(ctrl_cmds,
 	SHELL_CMD(vent, NULL, "Press VENT", cmd_ctrl_vent),
 	SHELL_CMD_ARG(fire, NULL, "Hold/release FIRE button <on|off>", cmd_ctrl_fire, 2, 0),
 	SHELL_CMD(safe, NULL, "Press SAFE", cmd_ctrl_safe),
+	SHELL_CMD(link, NULL, "Link state and counters", cmd_ctrl_link),
 	SHELL_SUBCMD_SET_END
 );
 SHELL_CMD_REGISTER(ctrl, &ctrl_cmds, "Controller inputs", NULL);
