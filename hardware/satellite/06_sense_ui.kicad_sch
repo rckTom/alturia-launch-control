@@ -1704,10 +1704,6 @@
 		(uuid "459e6736-543e-4f81-b9c7-dd51844b43da")
 	)
 	(no_connect
-		(at 254 92.71)
-		(uuid "5da2cdb4-f226-4f11-986e-a41f8632d0e2")
-	)
-	(no_connect
 		(at 142.24 92.71)
 		(uuid "812b2755-5010-42d6-883d-4e76086edf24")
 	)
@@ -2615,6 +2611,30 @@
 			)
 		)
 	)
+	(global_label "VBAT_SENSE"
+		(shape input)
+		(at 254 92.71 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "b1eb11f7-d8d0-41a4-9b50-d0d7dfd5ef8e")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 239.5849 92.71 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+	)
 	(global_label "SENSE_I_P5"
 		(shape input)
 		(at 254 85.09 180)
@@ -3037,6 +3057,28 @@
 				)
 			)
 		)
+		(property "Note" ""
+			(at 119.38 86.36 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C2870171"
+			(at 119.38 86.36 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "3"
 			(uuid "002490ee-ece5-48fb-9069-c59a8d60025a")
 		)
@@ -3366,6 +3408,28 @@
 				)
 			)
 		)
+		(property "Note" ""
+			(at 269.24 82.55 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C626764"
+			(at 269.24 82.55 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "12"
 			(uuid "0bf644cb-a20a-4302-9887-c04f29ae8014")
 		)
@@ -3566,6 +3630,28 @@
 				)
 			)
 		)
+		(property "Note" ""
+			(at 82.55 105.41 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C14663"
+			(at 82.55 105.41 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "1"
 			(uuid "cbade7ca-711f-4854-b068-c30c6e274d87")
 		)
@@ -3646,6 +3732,28 @@
 				)
 			)
 		)
+		(property "Note" ""
+			(at 156.21 90.17 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C5199872"
+			(at 156.21 90.17 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "1"
 			(uuid "a6c8354e-44fc-46d6-b3a8-4ec3b17f4370")
 		)
@@ -3717,6 +3825,28 @@
 		)
 		(property "Description" "Unpolarized capacitor"
 			(at 156.21 80.01 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Note" ""
+			(at 156.21 80.01 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C107070"
+			(at 156.21 80.01 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -3886,6 +4016,28 @@
 				)
 			)
 		)
+		(property "Note" ""
+			(at 312.42 82.55 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C5199872"
+			(at 312.42 82.55 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "2"
 			(uuid "f0661c82-f9df-44af-bc6c-fbdefaf6a3dc")
 		)
@@ -3957,6 +4109,28 @@
 		)
 		(property "Description" "Unpolarized capacitor"
 			(at 156.21 95.25 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Note" ""
+			(at 156.21 95.25 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C14663"
+			(at 156.21 95.25 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)

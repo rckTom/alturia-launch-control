@@ -7,7 +7,7 @@
 		(at 10 -4.475 0)
 		(unlocked yes)
 		(layer "F.SilkS")
-		(uuid "7586b942-0069-491a-999c-913066d6e0e7")
+		(uuid "a6229530-01cd-46e0-80fd-b9749399b0ec")
 		(effects
 			(font
 				(size 1 1)
@@ -19,7 +19,7 @@
 		(at -2.5 -7.475 0)
 		(unlocked yes)
 		(layer "F.Fab")
-		(uuid "6237d091-80cb-4d84-b4e0-b001de15650f")
+		(uuid "4c47532d-6f14-401f-9433-eb8a50af07be")
 		(effects
 			(font
 				(size 1 1)
@@ -32,7 +32,7 @@
 		(unlocked yes)
 		(layer "F.Fab")
 		(hide yes)
-		(uuid "0fc0e860-4bca-4b8a-b1d7-46c32ad6280e")
+		(uuid "c9a7a528-cd73-4404-af82-c670c0042479")
 		(effects
 			(font
 				(size 1 1)
@@ -45,7 +45,7 @@
 		(unlocked yes)
 		(layer "F.Fab")
 		(hide yes)
-		(uuid "8481dac1-0ff6-4978-b97c-f2ef8560365e")
+		(uuid "348bc898-20ce-4f6d-8e69-7e4d6970efd1")
 		(effects
 			(font
 				(size 1 1)
@@ -64,7 +64,7 @@
 			(type default)
 		)
 		(layer "F.SilkS")
-		(uuid "7e1d973c-74de-4b83-a064-bac59ececa7a")
+		(uuid "0faeace6-cee3-42ae-9cd3-b3acf0b1d119")
 	)
 	(fp_arc
 		(start 4.257346 4.25735)
@@ -75,7 +75,7 @@
 			(type default)
 		)
 		(layer "F.SilkS")
-		(uuid "a7377011-06ea-472a-8ee4-0607df837fb9")
+		(uuid "53dec080-078a-4a82-b17a-4a6e0aa60ec7")
 	)
 	(fp_arc
 		(start 5.242654 3.742654)
@@ -86,7 +86,7 @@
 			(type default)
 		)
 		(layer "F.SilkS")
-		(uuid "85c0caa7-8ac9-4cb1-9450-f75e63fe2c0e")
+		(uuid "5a6b1202-94b7-4283-b469-9f50e5ffbf3d")
 	)
 	(fp_arc
 		(start 13.757346 12.25735)
@@ -97,7 +97,7 @@
 			(type default)
 		)
 		(layer "F.SilkS")
-		(uuid "69bbc232-a24c-4eeb-ac90-2903b6f51b13")
+		(uuid "913bd7f7-ac3a-431e-8cda-d21699a5b178")
 	)
 	(fp_circle
 		(center 0 0.025)
@@ -108,7 +108,7 @@
 		)
 		(fill no)
 		(layer "F.CrtYd")
-		(uuid "ee8b81ee-5be4-42eb-ada0-bb99d21716d3")
+		(uuid "74e127c3-1c1d-482a-8fbc-554372f2b383")
 	)
 	(fp_circle
 		(center 9.5 8)
@@ -119,13 +119,13 @@
 		)
 		(fill no)
 		(layer "F.CrtYd")
-		(uuid "a6e95a60-92fd-486b-ad6d-433de28bd791")
+		(uuid "a719024b-b089-4762-b447-002c0e319448")
 	)
 	(fp_text user "${REFERENCE}"
 		(at 15 -2.5 0)
 		(unlocked yes)
 		(layer "F.Fab")
-		(uuid "887c5772-b009-4357-9f5f-9b47fa6eddc8")
+		(uuid "0a4b3621-b9f8-426d-8330-35e7b5197238")
 		(effects
 			(font
 				(size 1 1)
@@ -136,18 +136,18 @@
 	(pad "1" thru_hole circle
 		(at 0 0)
 		(size 8 8)
-		(drill 4)
+		(drill 4.2)
 		(layers "*.Cu" "*.Mask")
 		(remove_unused_layers no)
-		(uuid "0989752c-9356-40fb-8dbc-2a2910f0474d")
+		(uuid "54447008-7228-4c0d-bcaa-45854d34f472")
 	)
 	(pad "2" thru_hole circle
 		(at 9.5 8.025)
 		(size 8 8)
-		(drill 4)
+		(drill 4.2)
 		(layers "*.Cu" "*.Mask")
 		(remove_unused_layers no)
-		(uuid "97420004-f0fd-41b5-a6ef-27f8677a00e4")
+		(uuid "732b3b2d-da5b-4502-91bb-71a79e059ceb")
 	)
 	(embedded_fonts no)
 	(model "${KIPRJMOD}/cad/banana_jack.step"

@@ -1780,7 +1780,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(in_pos_files yes)
-		(dnp no)
+		(dnp yes)
 		(uuid "1c1608cc-bf85-473b-91b3-5b9c7eb7e07e")
 		(property "Reference" "J4"
 			(at 196.6915 61.4616 0)
@@ -1847,6 +1847,17 @@
 			)
 		)
 		(property "Spec" "J5"
+			(at 204.47 64.77 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Note" ""
 			(at 204.47 64.77 0)
 			(hide yes)
 			(show_name no)
@@ -2046,7 +2057,7 @@
 				)
 			)
 		)
-		(property "Value" "10k"
+		(property "Value" "10k 1%"
 			(at 49.8 86.066 90)
 			(show_name no)
 			(do_not_autoplace no)
@@ -2100,6 +2111,17 @@
 				)
 			)
 		)
+		(property "Note" ""
+			(at 46.99 82.55 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "1"
 			(uuid "2f625c1e-f5ea-4887-8e00-287ced085ae1")
 		)
@@ -2124,7 +2146,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(in_pos_files yes)
-		(dnp no)
+		(dnp yes)
 		(fields_autoplaced yes)
 		(uuid "bf1f4ff4-cb0e-4fcc-9889-5c22524c0986")
 		(property "Reference" "C17"
@@ -2182,6 +2204,17 @@
 				)
 			)
 		)
+		(property "Note" ""
+			(at 191.77 73.66 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "1"
 			(uuid "65b852c3-2b5d-49f0-92aa-d85a794c54b8")
 		)
@@ -2206,7 +2239,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(in_pos_files yes)
-		(dnp no)
+		(dnp yes)
 		(fields_autoplaced yes)
 		(uuid "c77c6a71-3fc9-4d6d-bbbf-0baf7c9315d2")
 		(property "Reference" "C16"
@@ -2254,6 +2287,17 @@
 			)
 		)
 		(property "Description" "Unpolarized capacitor"
+			(at 176.53 73.66 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Note" ""
 			(at 176.53 73.66 0)
 			(hide yes)
 			(show_name no)
@@ -2355,6 +2399,17 @@
 			)
 		)
 		(property "Spec" "U3"
+			(at 52.07 55.88 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Note" ""
 			(at 52.07 55.88 0)
 			(hide yes)
 			(show_name no)
@@ -2572,7 +2627,7 @@
 		(in_bom yes)
 		(on_board yes)
 		(in_pos_files yes)
-		(dnp no)
+		(dnp yes)
 		(fields_autoplaced yes)
 		(uuid "e889c4cd-446f-45e9-a2e4-4a019ef982a9")
 		(property "Reference" "L2"
@@ -2619,6 +2674,17 @@
 		)
 		(property "Description" "Inductor"
 			(at 184.15 64.77 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Note" ""
+			(at 184.15 64.77 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
