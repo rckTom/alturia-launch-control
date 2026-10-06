@@ -1632,6 +1632,12 @@
 		(uuid "299f7a4c-f00a-4c0a-8497-38179520ef3e")
 	)
 	(junction
+		(at 165.1 57.15)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "2b1e5c6c-2982-4c22-b314-e5529a52b0e8")
+	)
+	(junction
 		(at 148.59 77.47)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -1654,6 +1660,12 @@
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "42d6b044-ebb2-49cf-8285-3c911294816e")
+	)
+	(junction
+		(at 165.1 77.47)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "4a211262-13e6-4fc6-80bb-31f43ecce527")
 	)
 	(junction
 		(at 266.7 99.06)
@@ -1731,6 +1743,16 @@
 	)
 	(wire
 		(pts
+			(xy 165.1 77.47) (xy 167.64 77.47)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "103770b6-d6e9-42a2-bddd-196d408703a1")
+	)
+	(wire
+		(pts
 			(xy 266.7 67.31) (xy 274.32 67.31)
 		)
 		(stroke
@@ -1751,7 +1773,7 @@
 	)
 	(wire
 		(pts
-			(xy 148.59 77.47) (xy 167.64 77.47)
+			(xy 148.59 77.47) (xy 165.1 77.47)
 		)
 		(stroke
 			(width 0)
@@ -1768,6 +1790,16 @@
 			(type default)
 		)
 		(uuid "1c60daa9-9831-4637-b238-fd7555bb80cc")
+	)
+	(wire
+		(pts
+			(xy 165.1 57.15) (xy 168.91 57.15)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "1e3ffc0e-258b-4b93-94e8-da25ec308c26")
 	)
 	(wire
 		(pts
@@ -1828,6 +1860,36 @@
 			(type default)
 		)
 		(uuid "494e72df-f1e5-4733-84c1-58f84643bb98")
+	)
+	(wire
+		(pts
+			(xy 165.1 72.39) (xy 165.1 77.47)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "4a07a693-849b-44d2-8602-ec78d645c052")
+	)
+	(wire
+		(pts
+			(xy 148.59 57.15) (xy 165.1 57.15)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "533cb152-2161-4459-93b9-3105d1e24245")
+	)
+	(wire
+		(pts
+			(xy 148.59 72.39) (xy 148.59 57.15)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "54ae8810-2ec3-4a52-a7ac-4e64e7e6b3b9")
 	)
 	(wire
 		(pts
@@ -1978,6 +2040,16 @@
 			(type default)
 		)
 		(uuid "9f767f7f-f7f3-4de8-b7be-9b283c69099b")
+	)
+	(wire
+		(pts
+			(xy 165.1 57.15) (xy 165.1 64.77)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "a3534f9a-56e0-41f5-a4ac-e50977b4f374")
 	)
 	(wire
 		(pts
@@ -2158,6 +2230,16 @@
 			(type default)
 		)
 		(uuid "f0259f96-63b1-4802-9688-4d25ee354800")
+	)
+	(wire
+		(pts
+			(xy 142.24 72.39) (xy 148.59 72.39)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "f76d435a-8a74-476d-91ec-f1079aa7f5d5")
 	)
 	(wire
 		(pts
@@ -2661,7 +2743,7 @@
 	)
 	(global_label "V_TEST"
 		(shape input)
-		(at 142.24 72.39 0)
+		(at 168.91 57.15 0)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -2671,7 +2753,7 @@
 		)
 		(uuid "ba1ef456-1db5-434d-83e5-06aad11a05cc")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 151.5751 72.39 0)
+			(at 178.2451 57.15 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4307,6 +4389,110 @@
 			(project "satellite"
 				(path "/db013cf7-f7e6-4620-95be-2f73be9ff323/c381c755-29b2-435d-84c9-5e19261c125a"
 					(reference "#PWR065")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 165.1 68.58 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "ec5f1e85-8875-4a46-a2ee-51ab3ba86491")
+		(property "Reference" "C43"
+			(at 168.91 67.3099 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "100n"
+			(at 168.91 69.8499 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
+			(at 166.0652 72.39 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 165.1 68.58 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 165.1 68.58 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Note" ""
+			(at 165.1 68.58 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C14663"
+			(at 165.1 68.58 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "d3ef5296-be53-4541-b21b-ee073291f780")
+		)
+		(pin "2"
+			(uuid "b05f722a-5486-4520-82f7-f40f23c8b353")
+		)
+		(instances
+			(project "satellite"
+				(path "/db013cf7-f7e6-4620-95be-2f73be9ff323/c381c755-29b2-435d-84c9-5e19261c125a"
+					(reference "C43")
 					(unit 1)
 				)
 			)

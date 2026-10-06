@@ -3143,7 +3143,7 @@
 	)
 	(wire
 		(pts
-			(xy 175.26 82.55) (xy 175.26 92.71)
+			(xy 175.26 82.55) (xy 175.26 90.17)
 		)
 		(stroke
 			(width 0)
@@ -3853,6 +3853,16 @@
 	)
 	(wire
 		(pts
+			(xy 175.26 97.79) (xy 175.26 106.68)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "ce23b065-f343-4663-bab8-12dbc016ccfc")
+	)
+	(wire
+		(pts
 			(xy 267.97 139.7) (xy 276.86 139.7)
 		)
 		(stroke
@@ -4156,7 +4166,7 @@
 	)
 	(global_label "V_TEST"
 		(shape input)
-		(at 175.26 92.71 270)
+		(at 175.26 106.68 270)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -4166,7 +4176,7 @@
 		)
 		(uuid "f0bb9528-f27f-495c-924b-9dcae34b4056")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 175.26 102.0451 90)
+			(at 175.26 116.0151 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -5291,6 +5301,110 @@
 			(project "satellite"
 				(path "/db013cf7-f7e6-4620-95be-2f73be9ff323/bb61da2e-32c3-4187-b0e6-748ef2d775a3"
 					(reference "R28")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 175.26 93.98 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "33865ee8-b478-4452-96b1-7a103bafe594")
+		(property "Reference" "R12"
+			(at 177.8 92.7099 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "270"
+			(at 177.8 95.2499 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+			(at 173.482 93.98 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 175.26 93.98 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 175.26 93.98 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Note" ""
+			(at 175.26 93.98 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C22966"
+			(at 175.26 93.98 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "b4b2a612-2bad-40cc-8615-d4a983b8da7a")
+		)
+		(pin "2"
+			(uuid "a8ee6e70-ed24-47a2-a89a-7d77168fbabf")
+		)
+		(instances
+			(project "satellite"
+				(path "/db013cf7-f7e6-4620-95be-2f73be9ff323/bb61da2e-32c3-4187-b0e6-748ef2d775a3"
+					(reference "R12")
 					(unit 1)
 				)
 			)
