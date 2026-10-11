@@ -1,0 +1,5 @@
+(fp_lib_table
+	(version 7)
+	(lib (name "controller_symbols") (type "KiCad") (uri "${KIPRJMOD}/controller_symbols.pretty") (options "") (descr ""))
+	(lib (name "adafruit_symbol") (type "KiCad") (uri "${KIPRJMOD}/adafruit_symbol.pretty") (options "") (descr "Adafruit breakouts"))
+)
