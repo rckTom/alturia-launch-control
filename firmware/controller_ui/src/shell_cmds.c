@@ -13,6 +13,7 @@
 
 #include <zephyr/shell/shell.h>
 
+#include "battery.h"
 #include "controller.h"
 #include "ctrl_link.h"
 #include "inputs.h"
@@ -81,11 +82,70 @@ static int cmd_ctrl_select(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
-static int cmd_ctrl_turn(const struct shell *sh, size_t argc, char **argv)
+static int cmd_ctrl_up(const struct shell *sh, size_t argc, char **argv)
 {
 	ARG_UNUSED(sh);
-	ARG_UNUSED(argc);
-	ctrl_post(CTRL_REQ_CURSOR, atoi(argv[1]));
+	ctrl_post(CTRL_REQ_CURSOR, argc > 1 ? -atoi(argv[1]) : -1);
+	return 0;
+}
+
+static int cmd_ctrl_down(const struct shell *sh, size_t argc, char **argv)
+{
+	ARG_UNUSED(sh);
+	ctrl_post(CTRL_REQ_CURSOR, argc > 1 ? atoi(argv[1]) : 1);
+	return 0;
+}
+
+static int cmd_ctrl_left(const struct shell *sh, size_t argc, char **argv)
+{
+	ARG_UNUSED(sh);
+	ctrl_post(CTRL_REQ_ADJUST, argc > 1 ? -atoi(argv[1]) : -1);
+	return 0;
+}
+
+static int cmd_ctrl_right(const struct shell *sh, size_t argc, char **argv)
+{
+	ARG_UNUSED(sh);
+	ctrl_post(CTRL_REQ_ADJUST, argc > 1 ? atoi(argv[1]) : 1);
+	return 0;
+}
+
+static int cmd_ctrl_battery(const struct shell *sh, size_t argc, char **argv)
+{
+	struct battery_info b;
+
+	if (argc == 3) {
+		bool charging;
+
+		if (parse_on_off(sh, argv[2], &charging)) {
+			return -EINVAL;
+		}
+		if (battery_fake(atoi(argv[1]), charging)) {
+			shell_error(sh, "this board has a fuel gauge");
+			return -EBUSY;
+		}
+		return 0;
+	}
+
+	battery_get(&b);
+	if (b.gauge) {
+		shell_print(sh, "gauge: %u %%, %u mV, to empty %u min, to full %u min", b.soc_pct,
+			    b.voltage_mv, b.to_empty_min, b.to_full_min);
+	} else {
+		shell_print(sh, "gauge: no reading");
+	}
+	if (b.charger) {
+		shell_print(sh, "charger: %s, health %s, input %s", battery_status_text(b.status),
+			    battery_health_text(b.health), b.online ? "online" : "offline");
+		shell_print(sh, "  fast charge %u mA to %u mV, precharge %u mA, termination %u mA",
+			    b.ichg_ma, b.vreg_mv, b.iprechg_ma, b.iterm_ma);
+		shell_print(sh, "  input limit %u mA, input min. %u mV", b.iinlim_ma, b.vindpm_mv);
+	} else {
+		shell_print(sh, "charger: no reading");
+	}
+	if (b.pgood >= 0) {
+		shell_print(sh, "USB power good: %s", b.pgood ? "yes" : "no");
+	}
 	return 0;
 }
 
@@ -99,24 +159,27 @@ static int cmd_ctrl_turn(const struct shell *sh, size_t argc, char **argv)
 		return 0;                                                           \
 	}
 
-DEFINE_CTRL_BUTTON(push, CTRL_REQ_SELECT)
+DEFINE_CTRL_BUTTON(ok, CTRL_REQ_SELECT)
 DEFINE_CTRL_BUTTON(hold, CTRL_REQ_EDIT)
 DEFINE_CTRL_BUTTON(arm, CTRL_REQ_ARM)
-DEFINE_CTRL_BUTTON(safe, CTRL_REQ_SAFE)
+DEFINE_CTRL_BUTTON(back, CTRL_REQ_BACK)
+DEFINE_CTRL_BUTTON(back_hold, CTRL_REQ_BACK_LONG)
 DEFINE_CTRL_BUTTON(fill, CTRL_REQ_FILL)
 DEFINE_CTRL_BUTTON(vent, CTRL_REQ_VENT)
+DEFINE_CTRL_BUTTON(power, CTRL_REQ_POWER)
 
 /*
  * Keyboard mode: raw terminal input drives the controls directly, like the
  * keyboard of the native_sim build. A terminal only sends key presses, never
- * releases, so the FIRE button and the long push cannot be held: space
- * toggles FIRE and "e" stands in for the long push.
+ * releases, so FIRE and the long presses cannot be held: space toggles
+ * FIRE, "e" stands in for holding OK and "B" for holding BACK.
  */
 static const char kbd_help[] =
 	"Keyboard mode, q or Ctrl-C to leave\n"
-	"  Up/Down  encoder    Enter  push    e  long push\n"
-	"  k  arm key (toggle) a  ARM         s  SAFE\n"
-	"  f  FILL             v  VENT        Space  FIRE (toggle)";
+	"  Arrows  D-pad       Enter  OK      e  hold OK\n"
+	"  b  BACK             B  hold BACK   a  ARM\n"
+	"  f  FILL             v  VENT        Space  FIRE (toggle)\n"
+	"  p  power button     k  arm key (toggle, if the controller has one)";
 
 static enum { KBD_NORMAL, KBD_ESC, KBD_CSI } kbd_state;
 static bool kbd_last_cr;
@@ -143,8 +206,14 @@ static void kbd_key(const struct shell *sh, uint8_t c)
 	case 'a':
 		ctrl_post(CTRL_REQ_ARM, 0);
 		break;
-	case 's':
-		ctrl_post(CTRL_REQ_SAFE, 0);
+	case 'b':
+		ctrl_post(CTRL_REQ_BACK, 0);
+		break;
+	case 'B':
+		ctrl_post(CTRL_REQ_BACK_LONG, 0);
+		break;
+	case 'p':
+		ctrl_post(CTRL_REQ_POWER, 0);
 		break;
 	case 'f':
 		ctrl_post(CTRL_REQ_FILL, 0);
@@ -171,7 +240,7 @@ static void kbd_bypass(const struct shell *sh, uint8_t *data, size_t len, void *
 	for (size_t i = 0; i < len; i++) {
 		uint8_t c = data[i];
 
-		/* Arrow keys: ESC [ A/B, or ESC O A/B in application cursor mode */
+		/* Arrow keys: ESC [ A-D, or ESC O A-D in application cursor mode */
 		if (kbd_state == KBD_ESC) {
 			kbd_state = (c == '[' || c == 'O') ? KBD_CSI : KBD_NORMAL;
 			continue;
@@ -184,6 +253,8 @@ static void kbd_bypass(const struct shell *sh, uint8_t *data, size_t len, void *
 			kbd_state = KBD_NORMAL;
 			if (c == 'A' || c == 'B') {
 				ctrl_post(CTRL_REQ_CURSOR, c == 'A' ? -1 : 1);
+			} else if (c == 'C' || c == 'D') {
+				ctrl_post(CTRL_REQ_ADJUST, c == 'D' ? -1 : 1);
 			}
 			continue;
 		}
@@ -241,15 +312,22 @@ SHELL_STATIC_SUBCMD_SET_CREATE(ctrl_cmds,
 	SHELL_CMD(kbd, NULL, "Keyboard mode: drive the controls with single keys", cmd_ctrl_kbd),
 	SHELL_CMD_ARG(key, NULL, "Controller arm key <on|off>", cmd_ctrl_key, 2, 0),
 	SHELL_CMD_ARG(select, NULL, "Toggle pad selection <1-7>", cmd_ctrl_select, 2, 0),
-	SHELL_CMD_ARG(turn, NULL, "Turn the encoder <steps, negative is up>", cmd_ctrl_turn, 2, 0),
-	SHELL_CMD(push, NULL, "Push the encoder (toggle pad under cursor)", cmd_ctrl_push),
-	SHELL_CMD(hold, NULL, "Long-push the encoder (open / save label editor)", cmd_ctrl_hold),
+	SHELL_CMD_ARG(up, NULL, "D-pad up [times]", cmd_ctrl_up, 1, 1),
+	SHELL_CMD_ARG(down, NULL, "D-pad down [times]", cmd_ctrl_down, 1, 1),
+	SHELL_CMD_ARG(left, NULL, "D-pad left [times]", cmd_ctrl_left, 1, 1),
+	SHELL_CMD_ARG(right, NULL, "D-pad right [times]", cmd_ctrl_right, 1, 1),
+	SHELL_CMD(ok, NULL, "Press OK (toggle pad under cursor)", cmd_ctrl_ok),
+	SHELL_CMD(hold, NULL, "Hold OK (settings, save pad setup)", cmd_ctrl_hold),
 	SHELL_CMD(arm, NULL, "Press ARM", cmd_ctrl_arm),
 	SHELL_CMD(fill, NULL, "Press FILL", cmd_ctrl_fill),
 	SHELL_CMD(vent, NULL, "Press VENT", cmd_ctrl_vent),
 	SHELL_CMD_ARG(fire, NULL, "Hold/release FIRE button <on|off>", cmd_ctrl_fire, 2, 0),
-	SHELL_CMD(safe, NULL, "Press SAFE", cmd_ctrl_safe),
+	SHELL_CMD(back, NULL, "Press BACK (disarm, back out)", cmd_ctrl_back),
+	SHELL_CMD(back_hold, NULL, "Hold BACK (leave the button test)", cmd_ctrl_back_hold),
+	SHELL_CMD(power, NULL, "Press the power button", cmd_ctrl_power),
 	SHELL_CMD(link, NULL, "Link state and counters", cmd_ctrl_link),
+	SHELL_CMD_ARG(battery, NULL, "Controller battery [<pct> <on|off>: fake it, no gauge only]",
+		      cmd_ctrl_battery, 1, 2),
 	SHELL_SUBCMD_SET_END
 );
 SHELL_CMD_REGISTER(ctrl, &ctrl_cmds, "Controller inputs", NULL);

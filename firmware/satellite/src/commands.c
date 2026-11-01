@@ -45,7 +45,7 @@ void commands_measure(void)
 {
 	int32_t res[NUM_CHANNELS];
 	enum continuity cont[NUM_CHANNELS];
-	int32_t mv, ma;
+	int32_t mv;
 
 	for (int ch = 0; ch < NUM_CHANNELS; ch++) {
 		if (channels_continuity(ch, &mv) || mv < 0 ||
@@ -61,10 +61,11 @@ void commands_measure(void)
 	k_mutex_lock(&lock, K_FOREVER);
 	memcpy(st.res_mohm, res, sizeof(res));
 	memcpy(st.cont, cont, sizeof(cont));
-	if (rail_read(&mv, &ma) == 0) {
+	if (rail_vbat_mv(&mv) == 0) {
 		st.vbat_mv = mv;
-		st.rail_ma = ma;
 	}
+	/* No fire-rail current monitor on the board. */
+	st.rail_ma = 0;
 	k_mutex_unlock(&lock);
 }
 

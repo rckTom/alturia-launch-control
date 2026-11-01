@@ -7,6 +7,14 @@ config APP_SAT_SIM
 	  Replace the LoRa link with an in-process satellite simulator.
 	  Fault injection is available through the "sat" shell command.
 
+config APP_KEY_SWITCH
+	bool "Arm key switch"
+	default y
+	help
+	  The controller has a latching arm key switch (INPUT_KEY_K) that
+	  must be on to arm. Without one, ARM alone arms; the satellites'
+	  pad keys still have to be on.
+
 config APP_POLL_PERIOD_MS
 	int "Heartbeat poll period in milliseconds"
 	default 1200

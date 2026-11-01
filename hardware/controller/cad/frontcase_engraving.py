@@ -7,12 +7,18 @@ the satellite panel (hardware/satellite/cad/Case/frontpanel_engraving.py).
 
 Coordinates are mm in FrontCase.FCStd's Body frame, seen from the front
 (+z): SVG x = body x, SVG y = -body y. The origin is the centre of the flat
-top face (z = 13), which is 69.92 x 158.92 mm with R7.46 corners; its edge
+top face (z = 17), which is 69.92 x 158.92 mm with R7.46 corners; its edge
 then rolls over into the side walls. Hole positions are read from the Body
 solid (z = 13 face wires).
 
 Button assignment follows the 2026-10-01 mockup: FILL / VENT on the upper
-row, ARM / FIRE on the lower row, FIRE bottom right.
+row, ARM / FIRE on the lower row, FIRE bottom right. The two Ø1.8 LED holes
+between display and D-pad are D401 STATUS (green, left) and D201 CHG (red);
+PCB -> body is x - 99.5, -(y - 101.5).
+
+Every mark is at least MIN_LINE wide, the minimum line width for a UV DTF
+transfer (frontcase_uvdtf.py): text() checks the thinnest stroke of each
+label and refuses anything thinner.
 
 Layers:
   engrave  - black fills, the only thing the laser should mark
@@ -25,6 +31,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 W, H, R_CORNER = 69.92, 158.92, 7.46
 CLEAR = 2.0  # minimum distance from any hole edge
+MIN_LINE = 0.5  # UV DTF minimum line width
+LINE = 0.6      # width of the rules and the D-pad ring
 
 # ---- holes (body frame, y up) -------------------------------------------
 
@@ -42,18 +50,32 @@ BACK = (25.0, -2.0)
 
 WINDOW = (-31.15, 24.64, 31.15, 63.42)   # display opening x0, y0, x1, y1
 
+LED_R = 0.9            # Ø1.8 light holes
+LED_STATUS = (9.75, 15.0)   # D401, green
+LED_CHG = (18.0, 15.0)      # D201, red
+
 # ---- fonts --------------------------------------------------------------
 
-LABEL_FONT = "font-family:'Noto Sans';font-weight:600"
 TITLE_FONT = "font-family:'Noto Sans';font-weight:700"
+LABEL_FONT = "font-family:'Noto Sans';font-weight:800"
+STRONG_FONT = "font-family:'Noto Sans';font-weight:900"
 CAP = 0.714  # cap height / em for Noto Sans
+# Thinnest stroke / em per weight: the horizontals (E arms, H bar, O top),
+# measured on the installed NotoSans-*.ttf.
+THIN = {600: 0.107, 700: 0.124, 800: 0.138, 900: 0.155}
 
 
 def text(x, y, s, cap, style=LABEL_FONT, anchor="middle", spacing=0.0):
     """Text whose cap height is `cap` mm, vertically centred on body y."""
     size = cap / CAP
+    weight = int(style.split("font-weight:")[1])
+    if size * THIN[weight] < MIN_LINE:
+        raise ValueError(f"{s!r}: {size * THIN[weight]:.2f} mm strokes, "
+                         f"under the {MIN_LINE} mm minimum")
     if anchor == "middle":
         x += spacing / 2  # letter-spacing also trails the last glyph
+    elif anchor == "end":
+        x += spacing
     return (f'<text x="{x:.3f}" y="{-y + cap / 2:.3f}" '
             f'style="{style};font-size:{size:.3f}px;'
             f'letter-spacing:{spacing:.3f}px;text-anchor:{anchor}">{s}</text>')
@@ -65,7 +87,7 @@ def rect(x0, y0, x1, y1, r=0.0):
             f'height="{y1 - y0:.3f}" rx="{r:.3f}"/>')
 
 
-def hline(x0, x1, y, w=0.35):
+def hline(x0, x1, y, w=LINE):
     return rect(x0, y - w / 2, x1, y + w / 2, w / 2)
 
 
@@ -81,19 +103,28 @@ def ring(cx, cy, r_in, r_out):
 
 def engrave():
     e = []
-    SMALL = 2.6   # label cap height, as on the satellite
-    BIG = 3.2     # ARM / FIRE
+    SMALL = 2.8   # label cap height, the least that gives MIN_LINE strokes
+    BIG = 3.4     # ARM / FIRE
 
     # Title in the strip above the display
     e.append(text(0.0, 73.4, "ALTURIA", 5.0, style=TITLE_FONT, spacing=2.0))
-    e.append(text(0.0, 67.4, "LAUNCH CONTROL", 1.8, spacing=1.0))
-    e.append(hline(-29.0, -20.0, 67.4))
-    e.append(hline(20.0, 29.0, 67.4))
+    e.append(text(0.0, 67.4, "LAUNCH CONTROL", SMALL, spacing=0.4))
+    e.append(hline(-30.0, -23.0, 67.4))
+    e.append(hline(23.0, 30.0, 67.4))
 
     # D-pad: ring around the cluster, clear of the keycap corners
-    e.append(ring(*DPAD, 19.0, 19.35))
+    e.append(ring(*DPAD, 19.0, 19.0 + LINE))
     e.append(text(BACK[0], BACK[1] - ROUND_R - CLEAR - SMALL / 2, "BACK",
                   SMALL, spacing=0.3))
+
+    # LEDs: labels above, in the free strip under the display. The holes are
+    # only 8.25 mm apart, so each label ends over its own LED and runs
+    # outward; centred they read as one phrase.
+    yl = LED_STATUS[1] + LED_R + CLEAR + SMALL / 2
+    e.append(text(LED_STATUS[0] + LED_R, yl, "STATUS", SMALL, anchor="end",
+                  spacing=0.15))
+    e.append(text(LED_CHG[0] - LED_R, yl, "CHG", SMALL, anchor="start",
+                  spacing=0.15))
 
     # Upper row labelled above, lower row below, so the gap between the rows
     # separates the propellant valves from the launch pair.
@@ -101,8 +132,8 @@ def engrave():
     e.append(text(FILL[0], ya, "FILL", SMALL, spacing=0.3))
     e.append(text(VENT[0], ya, "VENT", SMALL, spacing=0.3))
     yb = ARM[1] - BEZEL_R - CLEAR - BIG / 2
-    e.append(text(ARM[0], yb, "ARM", BIG, style=TITLE_FONT, spacing=0.5))
-    e.append(text(FIRE[0], yb, "FIRE", BIG, style=TITLE_FONT, spacing=0.5))
+    e.append(text(ARM[0], yb, "ARM", BIG, style=STRONG_FONT, spacing=0.5))
+    e.append(text(FIRE[0], yb, "FIRE", BIG, style=STRONG_FONT, spacing=0.5))
     return e
 
 
@@ -114,6 +145,8 @@ def outline():
                  'stroke-dasharray="0.6 0.6"/>')
     for c in (DPAD, BACK):
         o.append(f'<circle cx="{c[0]}" cy="{-c[1]}" r="{ROUND_R}"/>')
+    for c in (LED_STATUS, LED_CHG):
+        o.append(f'<circle cx="{c[0]}" cy="{-c[1]}" r="{LED_R}"/>')
     for dx, dy in ((0, 1), (0, -1), (-1, 0), (1, 0)):
         x, y = DPAD[0] + dx * DPAD_PITCH, DPAD[1] + dy * DPAD_PITCH
         h = KEY_HOLE / 2

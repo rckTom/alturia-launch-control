@@ -62,30 +62,33 @@ static void on_link_event(const struct lsec_event *ev)
 
 int main(void)
 {
-	const int32_t leak_threshold_ma = 10;
 	int ret;
 
 	ret = settings_subsys_init();
 	if (ret) {
 		LOG_ERR("settings init: %d", ret);
+		chime_error();
+		return ret;
+	}
+
+	ret = arm_init();
+	if (ret) {
+		LOG_ERR("arm path init: %d", ret);
+		chime_error();
 		return ret;
 	}
 
 	ret = channels_init();
 	if (ret) {
 		LOG_ERR("channels init: %d", ret);
-		return ret;
-	}
-
-	ret = rail_init();
-	if (ret) {
-		LOG_ERR("rail monitor init: %d", ret);
+		chime_error();
 		return ret;
 	}
 
 	ret = pair_ui_init();
 	if (ret) {
 		LOG_ERR("pairing UI init: %d", ret);
+		chime_error();
 		return ret;
 	}
 
@@ -97,30 +100,24 @@ int main(void)
 	ret = radio_init(NULL);
 	if (ret) {
 		LOG_ERR("radio init: %d", ret);
+		chime_error();
 		return ret;
 	}
 
 	ret = sat_link_init(on_link_event, &link_radio_transport);
 	if (ret) {
 		LOG_ERR("link init: %d", ret);
+		chime_error();
 		return ret;
 	}
 
 	LOG_INF("satellite up, %d channels", SAT_CHANNELS);
+	chime_startup();
 
 	while (true) {
-		int32_t rail_mv, rail_ma;
-
 		k_sleep(K_MSEC(100));
 
 		commands_measure();
-
-		/* Current with no output driven is a leak. */
-		if (!channels_pulsing() && !channels_valve_mask() &&
-		    rail_read(&rail_mv, &rail_ma) == 0 && rail_ma > leak_threshold_ma) {
-			LOG_ERR("rail leaking %d mA with no channel firing", rail_ma);
-			disarm_all("rail leak");
-		}
 
 		/* The console's heartbeat is being polled; without it, SAFE. */
 		if ((uint32_t)(k_uptime_get_32() - (uint32_t)atomic_get(&last_poll_ms)) >

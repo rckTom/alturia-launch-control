@@ -2,6 +2,9 @@
 
 cmake_minimum_required(VERSION 3.20.0)
 
+# The controller board itself: firmware/boards/others/alturia_controller.
+list(APPEND BOARD_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/..)
+
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(launch_controller_ui)
 
@@ -14,11 +17,14 @@ target_sources(app PRIVATE
 	src/pads.c
 	src/ui.c
 	src/inputs.c
+	src/power.c
+	src/battery.c
 	src/shell_cmds.c
 	src/link_lsec.c
 	src/fonts/ui_font_18.c
 	src/fonts/ui_font_20.c
 	src/fonts/ui_font_28.c
+	src/logo/ui_logo.c
 )
 
 # The controller's end of the secure link (../common/link). The satellite
@@ -33,6 +39,10 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../common/link/link_sec.cmake)
 # Command and status payloads, shared with the satellite.
 target_include_directories(app PRIVATE ../common/wire)
 target_sources(app PRIVATE ../common/wire/sat_wire.c)
+
+# Buzzer tunes, shared with the satellite.
+target_include_directories(app PRIVATE ../common/chime)
+target_sources(app PRIVATE ../common/chime/chime.c)
 
 target_sources_ifdef(CONFIG_APP_SAT_SIM app PRIVATE src/sat_sim.c)
 

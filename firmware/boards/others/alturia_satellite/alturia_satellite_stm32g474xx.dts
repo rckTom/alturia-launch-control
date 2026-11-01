@@ -1,0 +1,375 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Alturia Launch Control satellite, rev A (hardware/satellite). Pin
+ * assignments are taken from the schematic netlist, U4 = STM32G474RET6.
+ *
+ * Channel numbering: channel n here, in the firmware and on the console is
+ * the one labelled n on the front panel. The panel counts left to right,
+ * the schematic the other way round, so channel n is PyroStage(7 - n) and
+ * its LED is LED_CHN_(7 - n). The continuity ADC follows the panel
+ * (AIN(n - 1) is channel n); the MCP3208's SENSE_I inputs follow the
+ * schematic (CH(6 - n) is channel n).
+ *
+ * There is no HSE crystal: the core runs from HSI16 through the PLL, USB
+ * from HSI48 trimmed by CRS (board.c). PF0/PF1 are channel 6's enables and
+ * PC14 is ARM_ENABLE, so neither clk_hse nor clk_lse may be enabled.
+ */
+
+/dts-v1/;
+#include <st/g4/stm32g474Xe.dtsi>
+#include <st/g4/stm32g474r(b-c-e)tx-pinctrl.dtsi>
+#include <zephyr/dt-bindings/adc/adc.h>
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+#include <zephyr/dt-bindings/lora/sx126x.h>
+#include <zephyr/dt-bindings/pwm/pwm.h>
+
+/ {
+	model = "Alturia Launch Control satellite";
+	compatible = "alturia,satellite";
+
+	chosen {
+		zephyr,sram = &sram0;
+		zephyr,flash = &flash0;
+		zephyr,code-partition = &slot0_partition;
+	};
+
+	aliases {
+		led0 = &status_led;
+		chan-led0 = &chan_led1;
+		chan-led1 = &chan_led2;
+		chan-led2 = &chan_led3;
+		chan-led3 = &chan_led4;
+		chan-led4 = &chan_led5;
+		chan-led5 = &chan_led6;
+		sw0 = &pair_button;
+		lora0 = &lora;
+		buzzer = &buzzer;
+		watchdog0 = &iwdg;
+		die-temp0 = &die_temp;
+		volt-sensor0 = &vref;
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		status_led: status_led {
+			gpios = <&gpiob 3 GPIO_ACTIVE_HIGH>;	/* LED_STATUS, D23 */
+		};
+	};
+
+	/* Channel LEDs, which also show the pairing pattern. */
+	chan_leds {
+		compatible = "gpio-leds";
+
+		chan_led1: chan_led1 { gpios = <&gpioa 8 GPIO_ACTIVE_HIGH>; };	/* LED_CHN_6 */
+		chan_led2: chan_led2 { gpios = <&gpioa 9 GPIO_ACTIVE_HIGH>; };	/* LED_CHN_5 */
+		chan_led3: chan_led3 { gpios = <&gpiob 7 GPIO_ACTIVE_HIGH>; };	/* LED_CHN_4 */
+		chan_led4: chan_led4 { gpios = <&gpioc 12 GPIO_ACTIVE_HIGH>; };	/* LED_CHN_3 */
+		chan_led5: chan_led5 { gpios = <&gpioc 11 GPIO_ACTIVE_HIGH>; };	/* LED_CHN_2 */
+		chan_led6: chan_led6 { gpios = <&gpioc 10 GPIO_ACTIVE_HIGH>; };	/* LED_CHN_1 */
+	};
+
+	/* Pyro channel control lines: TPS1HB08 enables (through 100 R) and the
+	 * low-side FET gates (10k pull-downs). gpio-leds is a stand-in
+	 * compatible so they can be fetched with GPIO_DT_SPEC_GET.
+	 */
+	pyro_enables {
+		compatible = "gpio-leds";
+
+		en_h1: en_h1 { gpios = <&gpioa 3 GPIO_ACTIVE_HIGH>; };	/* ENABLE_P6_HIGH */
+		en_h2: en_h2 { gpios = <&gpioc 5 GPIO_ACTIVE_HIGH>; };	/* ENABLE_P5_HIGH */
+		en_h3: en_h3 { gpios = <&gpioa 1 GPIO_ACTIVE_HIGH>; };	/* ENABLE_P4_HIGH */
+		en_h4: en_h4 { gpios = <&gpioc 3 GPIO_ACTIVE_HIGH>; };	/* ENABLE_P3_HIGH */
+		en_h5: en_h5 { gpios = <&gpioc 1 GPIO_ACTIVE_HIGH>; };	/* ENABLE_P2_HIGH */
+		en_h6: en_h6 { gpios = <&gpiof 1 GPIO_ACTIVE_HIGH>; };	/* ENABLE_P1_HIGH */
+		en_l1: en_l1 { gpios = <&gpioc 4 GPIO_ACTIVE_HIGH>; };	/* ENABLE_P6_LOW */
+		en_l2: en_l2 { gpios = <&gpioa 2 GPIO_ACTIVE_HIGH>; };	/* ENABLE_P5_LOW */
+		en_l3: en_l3 { gpios = <&gpioa 0 GPIO_ACTIVE_HIGH>; };	/* ENABLE_P4_LOW */
+		en_l4: en_l4 { gpios = <&gpioc 2 GPIO_ACTIVE_HIGH>; };	/* ENABLE_P3_LOW */
+		en_l5: en_l5 { gpios = <&gpioc 0 GPIO_ACTIVE_HIGH>; };	/* ENABLE_P2_LOW */
+		en_l6: en_l6 { gpios = <&gpiof 0 GPIO_ACTIVE_HIGH>; };	/* ENABLE_P1_LOW */
+		hs_latch: hs_latch {
+			gpios = <&gpiob 4 GPIO_ACTIVE_HIGH>;	/* COMMON_HIGH_SIDE_LATCH */
+		};
+		hs_dia_en: hs_dia_en {
+			gpios = <&gpiob 5 GPIO_ACTIVE_HIGH>;	/* COMMON_HIGH_SIDE_DIA_EN */
+		};
+	};
+
+	/* Arm path and continuity source, same stand-in compatible. The '123
+	 * one-shot (U6) holds K1 while ARM_PUMP keeps toggling; ARM_ENABLE is
+	 * its CLR. CONT_EN switches +3.3VA onto V_TEST through the AO3401A.
+	 */
+	arm_outputs {
+		compatible = "gpio-leds";
+
+		arm_pump: arm_pump {
+			gpios = <&gpiob 6 GPIO_ACTIVE_HIGH>;	/* ARM_PUMP -> U6 A */
+		};
+		arm_enable: arm_enable {
+			gpios = <&gpioc 14 GPIO_ACTIVE_HIGH>;	/* ARM_ENABLE -> U6 CLR */
+		};
+		cont_en: cont_en {
+			gpios = <&gpioa 10 GPIO_ACTIVE_LOW>;	/* CONT_EN, Q1 gate */
+		};
+	};
+
+	/* The continuity-test button (J6, 10k pull-up); held, it starts
+	 * pairing.
+	 */
+	pair_keys {
+		compatible = "gpio-keys";
+
+		pair_button: pair_button {
+			gpios = <&gpioc 15 GPIO_ACTIVE_LOW>;	/* CONT_TEST_REQ */
+			zephyr,code = <INPUT_KEY_0>;
+		};
+	};
+
+	/* VKEY through the 3k3/1k divider: the key relay K2 has closed. PD2
+	 * shares EXTI line 2 with LORA_DIO1 on PB2, so it is polled.
+	 */
+	key_switch {
+		compatible = "gpio-keys";
+		polling-mode;
+
+		key_enabled: key_enabled {
+			gpios = <&gpiod 2 GPIO_ACTIVE_HIGH>;	/* KEY_ENABLED */
+			zephyr,code = <INPUT_KEY_1>;
+		};
+	};
+
+	/* Rail dividers into the MCP3208, 3k3 over 1k: 14.2 V full scale. */
+	vbat_sense: vbat_sense {
+		compatible = "voltage-divider";
+		io-channels = <&adc_rails 7>;	/* VBAT_FUSED, R28/R113 */
+		output-ohms = <1000>;
+		full-ohms = <4300>;
+	};
+
+	vpyro_sense: vpyro_sense {
+		compatible = "voltage-divider";
+		io-channels = <&adc_rails 6>;	/* V_PYRO_ARMED, R26/R27 */
+		output-ohms = <1000>;
+		full-ohms = <4300>;
+	};
+
+	/* Magnetic transducer BZ1 on Q9; it needs a tone, not a level. */
+	buzzer: buzzer {
+		compatible = "pwm-buzzer";
+		pwms = <&pwm4 4 PWM_HZ(4000) PWM_POLARITY_NORMAL>;	/* BUZZER */
+	};
+};
+
+/* Schematic net names, so the GPIO shell can address pins by them. */
+&gpioa {
+	gpio-line-names = "ENABLE_P4_LOW", "ENABLE_P4_HIGH", "ENABLE_P5_LOW", "ENABLE_P6_HIGH",
+			  "LORA_NSS", "LORA_SCK", "LORA_MISO", "LORA_MOSI",
+			  "LED_CHN_6", "LED_CHN_5", "CONT_EN", "USB_DN",
+			  "USB_DP", "SWDIO", "SWCLK", "";
+};
+
+&gpiob {
+	gpio-line-names = "LORA_RST", "LORA_BUSY", "LORA_DIO1", "LED_STATUS",
+			  "COMMON_HIGH_SIDE_LATCH", "COMMON_HIGH_SIDE_DIA_EN", "ARM_PUMP", "LED_CHN_4",
+			  "BOOT0", "BUZZER", "U0RXD", "U0TXD",
+			  "SPI_ADC_24BIT_CS", "SPI_ADC_CLK", "SPI_ADC_MISO", "SPI_ADC_MOSI";
+};
+
+&gpioc {
+	gpio-line-names = "ENABLE_P2_LOW", "ENABLE_P2_HIGH", "ENABLE_P3_LOW", "ENABLE_P3_HIGH",
+			  "ENABLE_P6_LOW", "ENABLE_P5_HIGH", "SPI_ADC_12BIT_CS", "24BIT_ADC_DRDY",
+			  "24BIT_ADC_RESET", "24BIT_ADC_START", "LED_CHN_1", "LED_CHN_2",
+			  "LED_CHN_3", "LORA_RF_SW", "ARM_ENABLE", "CONT_TEST_REQ";
+};
+
+&gpiod {
+	gpio-line-names = "", "", "KEY_ENABLED";
+};
+
+&gpiof {
+	gpio-line-names = "ENABLE_P1_LOW", "ENABLE_P1_HIGH";
+};
+
+&clk_lsi {
+	status = "okay";
+};
+
+&clk_hsi {
+	status = "okay";
+};
+
+&clk_hsi48 {
+	status = "okay";
+};
+
+/* HSI16 / 4 * 85 / 2 = 170 MHz */
+&pll {
+	div-m = <4>;
+	mul-n = <85>;
+	div-p = <7>;
+	div-q = <2>;
+	div-r = <2>;
+	clocks = <&clk_hsi>;
+	status = "okay";
+};
+
+&rcc {
+	clocks = <&pll>;
+	clock-frequency = <DT_FREQ_M(170)>;
+	ahb-prescaler = <1>;
+	apb1-prescaler = <1>;
+	apb2-prescaler = <1>;
+};
+
+/* USB-C J1 carries the console and the shell. To move them to the UART
+ * header instead, point zephyr,console and zephyr,shell-uart at &lpuart1.
+ */
+zephyr_udc0: &usb {
+	pinctrl-0 = <&usb_dm_pa11 &usb_dp_pa12>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+#include <../boards/common/usb/cdc_acm_serial.dtsi>
+
+/* UART header J2: pin 2 TX, pin 3 RX, 3V3 levels. */
+&lpuart1 {
+	pinctrl-0 = <&lpuart1_tx_pb11 &lpuart1_rx_pb10>;
+	pinctrl-1 = <&analog_pb11 &analog_pb10>;
+	pinctrl-names = "default", "sleep";
+	current-speed = <115200>;
+	status = "okay";
+};
+
+/* Wio-SX1262. DIO2 selects TX inside the module, RF_SW powers the switch,
+ * which the native driver drives as antenna-enable.
+ */
+&spi1 {
+	pinctrl-0 = <&spi1_sck_pa5 &spi1_miso_pa6 &spi1_mosi_pa7>;
+	pinctrl-names = "default";
+	cs-gpios = <&gpioa 4 GPIO_ACTIVE_LOW>;	/* LORA_NSS, 10k pull-up */
+	status = "okay";
+
+	lora: sx1262@0 {
+		compatible = "semtech,sx1262";
+		reg = <0>;
+		spi-max-frequency = <DT_FREQ_M(8)>;
+		reset-gpios = <&gpiob 0 GPIO_ACTIVE_LOW>;	/* LORA_RST */
+		busy-gpios = <&gpiob 1 GPIO_ACTIVE_HIGH>;	/* LORA_BUSY */
+		dio1-gpios = <&gpiob 2 GPIO_ACTIVE_HIGH>;	/* LORA_DIO1 */
+		antenna-enable-gpios = <&gpioc 13 GPIO_ACTIVE_HIGH>;	/* LORA_RF_SW */
+		dio2-tx-enable;
+		dio3-tcxo-voltage = <SX126X_DIO3_TCXO_1V8>;
+		tcxo-power-startup-delay-ms = <5>;
+	};
+};
+
+/* Sense ADCs. The ADS124S08 measures the six SENSE_H lines against
+ * REFP0 = V_TEST (ratiometric, so continuity readings want
+ * ADC_REF_EXTERNAL0) and runs from its internal oscillator. The MCP3208
+ * has Vref = +3.3VA and carries SENSE_I_P1..6 on CH0..5, V_PYRO_SENSE on
+ * CH6 and VBAT_SENSE on CH7.
+ */
+&spi2 {
+	pinctrl-0 = <&spi2_sck_pb13 &spi2_miso_pb14 &spi2_mosi_pb15>;
+	pinctrl-names = "default";
+	cs-gpios = <&gpiob 12 GPIO_ACTIVE_LOW>,	/* SPI_ADC_24BIT_CS */
+		   <&gpioc 6 GPIO_ACTIVE_LOW>;	/* SPI_ADC_12BIT_CS */
+	status = "okay";
+
+	adc_continuity: ads124s08@0 {
+		compatible = "ti,ads124s08";
+		reg = <0>;
+		spi-max-frequency = <DT_FREQ_M(4)>;
+		#io-channel-cells = <1>;
+		drdy-gpios = <&gpioc 7 GPIO_ACTIVE_LOW>;	/* 24BIT_ADC_DRDY */
+		reset-gpios = <&gpioc 8 GPIO_ACTIVE_LOW>;	/* 24BIT_ADC_RESET */
+		start-sync-gpios = <&gpioc 9 GPIO_ACTIVE_HIGH>;	/* 24BIT_ADC_START */
+	};
+
+	adc_rails: mcp3208@1 {
+		compatible = "microchip,mcp3208";
+		reg = <1>;
+		spi-max-frequency = <DT_FREQ_M(1)>;
+		#io-channel-cells = <1>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		channel@6 {
+			reg = <6>;	/* V_PYRO_SENSE */
+			zephyr,gain = "ADC_GAIN_1";
+			zephyr,reference = "ADC_REF_EXTERNAL0";
+			zephyr,vref-mv = <3300>;	/* +3.3VA */
+			zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+			zephyr,resolution = <12>;
+		};
+
+		channel@7 {
+			reg = <7>;	/* VBAT_SENSE */
+			zephyr,gain = "ADC_GAIN_1";
+			zephyr,reference = "ADC_REF_EXTERNAL0";
+			zephyr,vref-mv = <3300>;	/* +3.3VA */
+			zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+			zephyr,resolution = <12>;
+		};
+	};
+};
+
+/* 16-bit timer: 170 MHz / 4 reaches down to 650 Hz for the buzzer. */
+&timers4 {
+	st,prescaler = <3>;
+	status = "okay";
+
+	pwm4: pwm {
+		pinctrl-0 = <&tim4_ch4_pb9>;
+		pinctrl-names = "default";
+		status = "okay";
+	};
+};
+
+&flash0 {
+	partitions {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		/* No bootloader: the image is flashed over SWD or ROM DFU. */
+		slot0_partition: partition@0 {
+			compatible = "zephyr,mapped-partition";
+			label = "image-0";
+			reg = <0x00000000 DT_SIZE_K(504)>;
+		};
+
+		/* Pairing keys and settings (ZMS). */
+		storage_partition: partition@7e000 {
+			compatible = "zephyr,mapped-partition";
+			label = "storage";
+			reg = <0x0007e000 DT_SIZE_K(8)>;
+		};
+	};
+};
+
+&iwdg {
+	status = "okay";
+};
+
+&rng {
+	status = "okay";
+};
+
+/* Internal channels only (die temperature, VREFINT); no pin is wired to it. */
+&adc1 {
+	st,adc-clock-source = "SYNC";
+	st,adc-prescaler = <4>;
+	status = "okay";
+};
+
+&die_temp {
+	status = "okay";
+};
+
+&vref {
+	status = "okay";
+};

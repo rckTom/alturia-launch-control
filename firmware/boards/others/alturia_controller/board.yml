@@ -1,0 +1,11 @@
+board:
+  name: alturia_controller
+  full_name: Alturia Launch Control controller
+  vendor: others
+  revision:
+    format: letter
+    default: "A"
+    revisions:
+      - name: "A"
+  socs:
+    - name: esp32s3

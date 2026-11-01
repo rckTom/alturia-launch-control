@@ -13,22 +13,45 @@ the real firmware.
 
 ## Building
 
-There is no board definition for the satellite yet, so it builds against a
-Nucleo-G474RE carrying the Semtech SX1262 shield. The overlay in
-[`boards/nucleo_g474re.overlay`](boards/nucleo_g474re.overlay) adds the
-external devices the real board has, with stand-in pin assignments, so their
-drivers are compiled and exercised:
+The satellite board itself is `alturia_satellite`, defined out of tree in
+[`../boards/others/alturia_satellite/`](../boards/others/alturia_satellite/)
+(the app's `CMakeLists.txt` adds `firmware/` to `BOARD_ROOT`). Its
+devicetree carries every device on the board with the pin assignments from
+the schematic netlist; channel n there is the one labelled n on the front
+panel, which is PyroStage(7 − n):
 
 | Device | Bus | Role |
 |---|---|---|
-| SX1262 (Wio-SX1262 on the board) | SPI1 (shield) | LoRa link to the console |
-| ADS124S08 | SPI2 | 24-bit continuity measurement |
-| MCP3208 | SPI2 | 12-bit rail dividers |
-| INA226 | I2C1 | Fire-rail current across the 2 mΩ shunt |
-| USB FS | — | Console over CDC ACM |
+| Wio-SX1262 | SPI1 | LoRa link to the console |
+| ADS124S08 | SPI2 | 24-bit continuity measurement, REFP0 = V_TEST |
+| MCP3208 | SPI2 | SENSE_I per channel, V_PYRO_SENSE (CH6), VBAT_SENSE (CH7) |
+| Buzzer | TIM4 CH4 | Passive transducer, PWM tone |
+| USB FS | — | Console and shell over CDC ACM |
+| LPUART1 | J2 | Spare UART header |
 
 ```sh
 source ~/Tools/zephyrproject/venv/bin/activate
+west build -b alturia_satellite -d build-board -p always .
+west flash -d build-board                # ST-LINK on J3
+west flash -d build-board -r dfu-util    # or USB DFU: hold BOOT0 (SW1) through a reset
+```
+
+The app-side settings for the board (LoRa, GPIO and ADC shells) are in
+[`boards/alturia_satellite.conf`](boards/alturia_satellite.conf). For
+bring-up, `gpio info`, `gpio get gpioc 15`, `gpio set gpiob 3 1` and
+`adc ads124s08@0 read 0` work from the USB shell.
+
+There is no HSE crystal, so USB runs from HSI48; the board's `board.c`
+turns on CRS so HSI48 is trimmed against USB SOF.
+
+### Nucleo bench
+
+It also builds against a Nucleo-G474RE carrying the Semtech SX1262 shield.
+The overlay in [`boards/nucleo_g474re.overlay`](boards/nucleo_g474re.overlay)
+adds the same external devices with stand-in pin assignments, so their
+drivers are compiled and exercised:
+
+```sh
 west build -b nucleo_g474re --shield semtech_sx1262mb2das -p always .
 ```
 

@@ -11,6 +11,7 @@
 #include <zephyr/logging/log.h>
 #include <lvgl.h>
 
+#include "chime.h"
 #include "controller.h"
 #include "link.h"
 #include "pads.h"
@@ -33,17 +34,24 @@ int main(void)
 
 	if (!device_is_ready(display)) {
 		LOG_ERR("display not ready");
+		chime_error();
 		return 0;
 	}
+
+	/* The splash first, while the rest starts up */
+	ui_init();
+	lv_timer_handler();
+	display_blanking_off(display);
 
 	(void)pads_init();
 	/* After pads_init(), which brings up the settings subsystem */
 	if (link_init()) {
 		LOG_ERR("secure link failed to start");
+		chime_error();
+	} else {
+		chime_startup();
 	}
-	ui_init();
 	lv_timer_create(ctrl_timer_cb, CTRL_PERIOD_MS, NULL);
-	display_blanking_off(display);
 
 	LOG_INF("launch controller UI running");
 

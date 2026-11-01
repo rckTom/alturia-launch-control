@@ -20,10 +20,39 @@ static int cmd_arm(const struct shell *sh, size_t argc, char **argv)
 static int cmd_cont(const struct shell *sh, size_t argc, char **argv)
 {
 	int ch = atoi(argv[1]);
+	struct cont_result res;
 	int32_t mv;
-	int ret = channels_continuity(ch, &mv);
+	int ret = channels_continuity_mohm(ch, &res);
 
-	shell_print(sh, "ch%d continuity: %d mV (%d)", ch, mv, ret);
+	if (ret == -ENOTSUP) {
+		ret = channels_continuity(ch, &mv);
+		shell_print(sh, "ch%d continuity: %d mV (%d)", ch, mv, ret);
+		return ret;
+	}
+	if (ret && ret != -ERANGE) {
+		shell_error(sh, "ch%d continuity: %d%s", ch, ret,
+			    ret == -EBUSY ? " (armed)" : ret == -EIO ? " (no V_TEST)" : "");
+		return ret;
+	}
+	if (ret == -ERANGE) {
+		shell_warn(sh, "readings do not fit the circuit (diode drop out of range)");
+	}
+
+	if (res.open) {
+		shell_print(sh, "ch%d: open", ch);
+	} else {
+		shell_print(sh, "ch%d: %d.%03d ohm", ch, res.mohm / 1000, res.mohm % 1000);
+	}
+	shell_print(sh, "  PYRO_H %d uV, diode %d mV, %d uA through the load",
+		    res.pyro_h_uv, res.diode_uv / 1000, res.current_na / 1000);
+	if (res.v_test_from >= 0) {
+		shell_print(sh, "  V_TEST %d mV measured on ch%d (R12 model: %d mV)",
+			    res.v_test_uv / 1000, res.v_test_from, res.v_test_model_uv / 1000);
+	} else {
+		shell_print(sh, "  V_TEST %d mV from the R12 model (no idle channel)",
+			    res.v_test_uv / 1000);
+	}
+	shell_print(sh, "  ADC zero %d uV at the tap (subtracted)", res.zero_uv);
 	return ret;
 }
 
@@ -76,13 +105,62 @@ static int cmd_link(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
-static int cmd_rail(const struct shell *sh, size_t argc, char **argv)
+static int cmd_rails(const struct shell *sh, size_t argc, char **argv)
 {
-	int32_t mv, ma;
-	int ret = rail_read(&mv, &ma);
+	if (rails_count() == 0) {
+		shell_print(sh, "no rail sensing on this board");
+		return 0;
+	}
 
-	shell_print(sh, "rail: %d mV, %d mA (%d)", mv, ma, ret);
-	return ret;
+	for (size_t i = 0; i < rails_count(); i++) {
+		const char *name;
+		int32_t mv;
+		int ret = rails_read(i, &name, &mv);
+
+		if (ret) {
+			shell_print(sh, "%-14s error %d", name, ret);
+		} else {
+			shell_print(sh, "%-14s %3d.%03d V", name, mv / 1000, mv % 1000);
+		}
+	}
+	return 0;
+}
+
+static int cmd_k1(const struct shell *sh, size_t argc, char **argv)
+{
+	int ret = 0;
+
+	if (argc > 1) {
+		if (!strcmp(argv[1], "on")) {
+			ret = arm_relay_set(true);
+		} else if (!strcmp(argv[1], "off")) {
+			ret = arm_relay_set(false);
+		} else {
+			shell_error(sh, "on or off");
+			return -EINVAL;
+		}
+		if (ret) {
+			shell_error(sh, "arm relay: %d", ret);
+			return ret;
+		}
+		/* Let K1 pull in or drop out before reading the rail. */
+		k_msleep(50);
+	}
+
+	int key = arm_key_on();
+
+	shell_print(sh, "arm relay K1: %s, key: %s", arm_relay_on() ? "pumping" : "off",
+		    key < 0 ? "?" : (key ? "on (VKEY)" : "off"));
+
+	for (size_t i = 0; i < rails_count(); i++) {
+		const char *name;
+		int32_t mv;
+
+		if (rails_read(i, &name, &mv) == 0 && !strcmp(name, "V_PYRO_ARMED")) {
+			shell_print(sh, "%s %d.%03d V", name, mv / 1000, mv % 1000);
+		}
+	}
+	return 0;
 }
 
 static int cmd_diag(const struct shell *sh, size_t argc, char **argv)
@@ -110,17 +188,25 @@ static int cmd_fire(const struct shell *sh, size_t argc, char **argv)
 	return ret;
 }
 
+static int cmd_beep(const struct shell *sh, size_t argc, char **argv)
+{
+	chime_startup();
+	return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sat_cmds,
 	SHELL_CMD_ARG(arm, NULL, "<ch> <0|1>", cmd_arm, 3, 0),
-	SHELL_CMD_ARG(cont, NULL, "<ch>", cmd_cont, 2, 0),
+	SHELL_CMD_ARG(cont, NULL, "<ch> resistance across the output (ch 0-5 = panel 1-6)", cmd_cont, 2, 0),
 	SHELL_CMD_ARG(fire, NULL, "<ch> <ms>", cmd_fire, 3, 0),
-	SHELL_CMD_ARG(rail, NULL, "read the INA226", cmd_rail, 1, 0),
+	SHELL_CMD_ARG(k1, NULL, "[on|off] arm relay K1 via ARM_ENABLE and ARM_PUMP", cmd_k1, 1, 1),
+	SHELL_CMD_ARG(rails, NULL, "measure the supply rail voltages", cmd_rails, 1, 0),
 	SHELL_CMD_ARG(diag, NULL, "<0|1> TPS1HB08 diagnostics", cmd_diag, 2, 0),
 	SHELL_CMD_ARG(clear, NULL, "clear the high-side latch", cmd_clear, 1, 0),
 	SHELL_CMD_ARG(pair, NULL, "[confirm|reject] enter pairing mode (SAFE only), "
 		      "or answer the pattern", cmd_pair, 1, 1),
 	SHELL_CMD_ARG(unpair, NULL, "forget the console", cmd_unpair, 1, 0),
 	SHELL_CMD_ARG(link, NULL, "link state and drop counters", cmd_link, 1, 0),
+	SHELL_CMD_ARG(beep, NULL, "play the start-up chime", cmd_beep, 1, 0),
 	SHELL_SUBCMD_SET_END
 );
 

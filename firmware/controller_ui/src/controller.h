@@ -9,12 +9,21 @@
  * hybrid pads, FILL and VENT toggle the valves while armed; either one,
  * and LAUNCH, stops a running fill.
  *
- * In SAFE, a long select opens the settings screen, which lists all pads
- * including OFF ones; the main list only shows enabled pads. Selecting a
- * pad there opens its setup screen. Turning above the first pad reaches
- * the satellites screen, where satellites are paired and forgotten. While
- * any of these is open, the encoder and keypad act on it, SAFE backs out
- * one level, and ARM, FILL and VENT are refused.
+ * The controls are a D-pad (up, down, left, right, OK), BACK, ARM, FIRE,
+ * FILL, VENT and the power button. BACK disarms, acknowledges a fault and
+ * backs out of a screen.
+ *
+ * In SAFE, holding OK opens the settings menu:
+ *  - Pads: all pads including OFF ones (the main list only shows enabled
+ *    pads); OK on one opens its setup screen.
+ *  - Satellites: pairing and forgetting.
+ *  - Diagnostics, a menu of its own: the button test, which shows every
+ *    button press instead of acting on it (holding BACK leaves), and the
+ *    battery.
+ *  - Power off.
+ * While any of these is open, the D-pad acts on it, BACK backs out one
+ * level, and ARM, FILL and VENT are refused. The power button asks to
+ * switch off from anywhere in SAFE.
  */
 
 #ifndef CONTROLLER_H_
@@ -82,9 +91,8 @@ enum setup_field {
 };
 
 enum setup_mode {
-	SETUP_FIELDS,  /* turning moves between fields */
-	SETUP_VALUE,   /* turning changes the value of the field */
-	SETUP_LABEL,   /* turning changes the character under the cursor */
+	SETUP_FIELDS,  /* up/down: field, left/right: its value */
+	SETUP_LABEL,   /* up/down: character, left/right: position */
 };
 
 /* Pad setup screen */
@@ -94,19 +102,33 @@ struct pad_setup {
 	int pad;
 	int field;
 	int pos;                          /* label character being edited */
-	char label[PAD_LABEL_MAX + 1];    /* space padded while editing */
+	char label[PAD_LABEL_MAX + 1];    /* being edited, space padded; BACK drops it */
 	struct pad_cfg cfg;               /* draft */
-	struct pad_cfg undo;              /* draft before the current field edit */
 	const char *error;                /* why the draft cannot be saved */
 };
 
-/* Settings screen: all pads, including OFF ones */
-struct settings_view {
+/* A list with a cursor: a menu, or the pad list */
+struct menu_view {
 	bool active;
-	int cursor;   /* pad, or SETTINGS_SATS for the satellites entry */
+	int cursor;
 };
 
-#define SETTINGS_SATS -1
+/* Settings menu entries, top to bottom */
+enum settings_entry {
+	SETTINGS_PADS,
+	SETTINGS_SATS,
+	SETTINGS_DIAG,
+	SETTINGS_OFF,
+	SETTINGS_COUNT,
+};
+
+/* Diagnostics menu entries, and the screen they open */
+enum diag_entry {
+	DIAG_BUTTONS,
+	DIAG_BATTERY,
+	DIAG_COUNT,
+	DIAG_NONE = -1,
+};
 
 /* Satellites screen, opened from the settings screen */
 struct sats_view {
@@ -139,7 +161,7 @@ struct pair_view {
 	uint8_t sas[LSEC_SAS_FRAMES];
 };
 
-/* Rows of the armed continuity table visible at once; the encoder scrolls */
+/* Rows of the armed continuity table visible at once; up and down scroll */
 #define ARMED_TABLE_ROWS 5
 
 struct ctrl_view {
@@ -149,10 +171,15 @@ struct ctrl_view {
 	uint16_t selected;        /* bit per pad */
 	int cursor;               /* pad under the list cursor, never an OFF pad */
 	int table_scroll;         /* first visible row of the armed table */
-	struct settings_view settings;
-	struct pad_setup setup;   /* opened from the settings screen */
-	struct sats_view sats;    /* opened from the settings screen */
-	struct pair_view pair;    /* opened from the satellites screen */
+	struct menu_view settings;    /* settings menu, opened by holding OK */
+	struct menu_view pad_list;    /* all pads, from the settings menu */
+	struct pad_setup setup;       /* opened from the pad list */
+	struct sats_view sats;        /* from the settings menu */
+	struct pair_view pair;        /* opened from the satellites screen */
+	struct menu_view diag_menu;   /* from the settings menu */
+	int diag;                     /* open diagnostics screen, DIAG_NONE if none */
+	bool power_confirm;       /* asking whether to switch off */
+	bool powering_off;        /* switched off, waiting for the power to go */
 	bool key_on;
 	/* Why arming is currently not possible, NULL if it is */
 	const char *arm_block;
@@ -164,7 +191,7 @@ struct ctrl_view {
 	char message[80];
 	enum msg_level message_level;
 	int64_t message_time;
-	bool fault_active;        /* the last fault still needs a SAFE press */
+	bool fault_active;        /* the last fault still needs a BACK press */
 	uint8_t channel_util;     /* % busy, every network counted */
 	uint8_t other_nets;       /* other controllers' networks heard */
 	bool channel_crowded;     /* commands may take several tries */
@@ -179,13 +206,16 @@ bool ctrl_pad_visible(int p);
 
 enum ctrl_req_type {
 	CTRL_REQ_TOGGLE_PAD,  /* arg: pad */
-	CTRL_REQ_CURSOR,      /* arg: rows to move, negative is up */
-	CTRL_REQ_SELECT,      /* toggle the pad under the cursor */
-	CTRL_REQ_EDIT,        /* long select: settings, or save in pad setup */
+	CTRL_REQ_CURSOR,      /* up/down, arg: rows to move, negative is up */
+	CTRL_REQ_ADJUST,      /* left/right, arg: steps, negative is left */
+	CTRL_REQ_SELECT,      /* OK: toggle the pad under the cursor */
+	CTRL_REQ_EDIT,        /* OK held: settings, or save in pad setup */
 	CTRL_REQ_ARM,
-	CTRL_REQ_SAFE,
+	CTRL_REQ_BACK,        /* disarm, acknowledge, back out */
+	CTRL_REQ_BACK_LONG,   /* BACK held: leaves the button test */
 	CTRL_REQ_FILL,
 	CTRL_REQ_VENT,
+	CTRL_REQ_POWER,       /* power button: ask to switch off */
 };
 
 /* Thread-safe; the request is executed in the next ctrl_tick(). */

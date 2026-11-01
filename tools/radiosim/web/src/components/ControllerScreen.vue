@@ -15,11 +15,14 @@ const LIGHT = [0xd7, 0xdb, 0xd2]
 const DARK = [0x16, 0x18, 0x15]
 
 // The controls' gpio0 pins, as boards/native_sim.overlay gives them to gpio-keys.
-const PIN = { key: 1, fire: 2, safe: 3, arm: 4, fill: 5, vent: 6, up: 7, down: 8, select: 9 }
+const PIN = {
+  key: 1, fire: 2, back: 3, arm: 4, fill: 5, vent: 6, up: 7, down: 8, select: 9,
+  left: 12, right: 13, power: 14,
+}
 type Control = keyof typeof PIN
 const KEYS: Record<string, Control> = {
-  k: 'key', ' ': 'fire', Escape: 'safe', a: 'arm', f: 'fill', v: 'vent',
-  ArrowUp: 'up', ArrowDown: 'down', Enter: 'select',
+  k: 'key', ' ': 'fire', Escape: 'back', a: 'arm', f: 'fill', v: 'vent', p: 'power',
+  ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'select',
 }
 const down = reactive<Record<string, boolean>>({})
 
@@ -140,7 +143,7 @@ function releaseAll() {
   <div class="scr" tabindex="0" @keydown="onKey($event, true)" @keyup="onKey($event, false)" @blur="releaseAll">
     <div ref="box" class="lcd">
       <canvas ref="canvas" width="400" height="240" :style="{ width: dim.w * dim.scale + 'px', height: dim.h * dim.scale + 'px' }"
-        title="Wheel: encoder · click: encoder push (hold for long press)"
+        title="Wheel: up/down · click: OK (hold for long press)"
         @wheel.prevent="onWheel" @pointerdown="send('touch', 0, 1)" @pointerup="send('touch', 0, 0)" />
       <span v-if="state !== 'open' || !node?.connected" class="state">
         {{ state !== 'open' ? state : node?.running ? 'waiting for the controller…' : 'not running' }}
@@ -157,14 +160,18 @@ function releaseAll() {
         @pointerdown="control('vent', true)" @pointerup="control('vent', false)" @pointerleave="control('vent', false)">VENT</button>
       <button class="fire" :class="{ down: down.fire }" title="Hold (Space)"
         @pointerdown="control('fire', true)" @pointerup="control('fire', false)" @pointerleave="control('fire', false)">FIRE</button>
-      <button class="safe" :class="{ down: down.safe }" title="Esc"
-        @pointerdown="control('safe', true)" @pointerup="control('safe', false)" @pointerleave="control('safe', false)">SAFE</button>
+      <button class="back" :class="{ down: down.back }" title="Esc; hold to leave the button test"
+        @pointerdown="control('back', true)" @pointerup="control('back', false)" @pointerleave="control('back', false)">BACK</button>
       <div class="pad">
-        <button :class="{ down: down.up }" @pointerdown="control('up', true)" @pointerup="control('up', false)" @pointerleave="control('up', false)">▲</button>
-        <button :class="{ down: down.select }" @pointerdown="control('select', true)" @pointerup="control('select', false)" @pointerleave="control('select', false)">●</button>
-        <button :class="{ down: down.down }" @pointerdown="control('down', true)" @pointerup="control('down', false)" @pointerleave="control('down', false)">▼</button>
+        <button class="up" :class="{ down: down.up }" @pointerdown="control('up', true)" @pointerup="control('up', false)" @pointerleave="control('up', false)">▲</button>
+        <button :class="{ down: down.left }" @pointerdown="control('left', true)" @pointerup="control('left', false)" @pointerleave="control('left', false)">◀</button>
+        <button :class="{ down: down.select }" title="OK" @pointerdown="control('select', true)" @pointerup="control('select', false)" @pointerleave="control('select', false)">●</button>
+        <button :class="{ down: down.right }" @pointerdown="control('right', true)" @pointerup="control('right', false)" @pointerleave="control('right', false)">▶</button>
+        <button class="dn" :class="{ down: down.down }" @pointerdown="control('down', true)" @pointerup="control('down', false)" @pointerleave="control('down', false)">▼</button>
       </div>
-      <p class="muted help">Click the screen for the keyboard: K A F V, Space fire, Esc safe, arrows, Enter.</p>
+      <button class="power" :class="{ down: down.power }" title="Power button (P)"
+        @pointerdown="control('power', true)" @pointerup="control('power', false)" @pointerleave="control('power', false)">POWER</button>
+      <p class="muted help">Click the screen for the keyboard: K A F V P, Space fire, Esc back, arrows, Enter.</p>
     </div>
   </div>
 </template>
@@ -232,14 +239,21 @@ canvas {
 .fire.down {
   background: #dc2626 !important;
 }
-.safe {
+.back {
   color: #4ade80;
+}
+.power {
+  grid-column: span 2;
 }
 .pad {
   grid-column: span 2;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 6px;
+}
+.pad .up,
+.pad .dn {
+  grid-column: 2;
 }
 .help {
   grid-column: span 2;

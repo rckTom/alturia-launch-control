@@ -1,0 +1,17 @@
+identifier: alturia_controller/esp32s3/procpu
+name: Alturia Launch Control controller PROCPU
+type: mcu
+arch: xtensa
+toolchain:
+  - zephyr
+supported:
+  - display
+  - entropy
+  - gpio
+  - i2c
+  - input
+  - lora
+  - pwm
+  - spi
+  - watchdog
+vendor: others

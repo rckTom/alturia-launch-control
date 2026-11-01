@@ -108,17 +108,17 @@ class Sim:
 
     async def pair(self, ctrl: str, sat: str, slot: int) -> bool:
         """Pair sat into the controller's slot (0 = A), both driven from their shells."""
-        await self.shell(ctrl, ["ctrl safe", "ctrl safe", "ctrl hold", "ctrl turn -10",
-                                "ctrl push", "ctrl turn -8"]
-                         + ([f"ctrl turn {slot}"] if slot else []) + ["ctrl push"], 0.6)
+        await self.shell(ctrl, ["ctrl back", "ctrl back", "ctrl hold", "ctrl down",
+                                "ctrl ok", "ctrl up 8"]
+                         + ([f"ctrl down {slot}"] if slot else []) + ["ctrl ok"], 0.6)
         await self.shell(sat, ["sat pair"], 0.5)
         for _ in range(20):
-            out = await self.shell(ctrl, ["ctrl push"], 1.5)
+            out = await self.shell(ctrl, ["ctrl ok"], 1.5)
             if "compare" in out:
                 break
-        await self.shell(ctrl, ["ctrl push"], 0.5)
+        await self.shell(ctrl, ["ctrl ok"], 0.5)
         out = await self.shell(sat, ["sat pair confirm"], 4.0)
-        await self.shell(ctrl, ["ctrl safe", "ctrl safe"], 0.5)
+        await self.shell(ctrl, ["ctrl back", "ctrl back"], 0.5)
         return "paired as slot" in out
 
     def frames_since(self, t_rel: int) -> list[dict]:
@@ -363,7 +363,7 @@ async def commands(sim: Sim, loss: float, args_runs_cmd: int = 3, ctrl: str = "c
     from the controller's own log."""
     print(f"\nARM / FIRE on network 1, {loss:g} % random loss on the {ctrl}-{sat} link:")
     for run in range(args_runs_cmd):
-        out = await sim.shell(ctrl, ["ctrl safe", "ctrl key on", "ctrl arm"], 0.4)
+        out = await sim.shell(ctrl, ["ctrl back", "ctrl key on", "ctrl arm"], 0.4)
         if "Select pads" in out:
             out += await sim.shell(ctrl, ["ctrl select 2", "ctrl arm"], 0.4)
         out += await sim.shell(ctrl, [], 2.0)

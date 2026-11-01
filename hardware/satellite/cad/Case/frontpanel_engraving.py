@@ -8,14 +8,29 @@ Coordinates are mm, origin at the panel centre, x right, y down, as seen
 from the FRONT of the panel, the way up it is mounted. frontpanel_outline.svg
 is a TechDraw view from behind (the PCB sits on +z in front_plate_assembly,
 parts point to -z through the panel) and upside down relative to the
-mounted panel, so every y from that drawing is negated here.
+mounted panel, so every y from that drawing is negated here. The drawing
+predates later reworks; read the holes from the `Body` solid of
+front_palte.FCStd instead: front-view mm = (45 - x, -(y + 38.5)).
 
-Channel numbers follow the hardware (J23 = PyroStage1 = LED_CHN_1), which
-puts channel 1 on the right.
+The fuse holder, the rocker and the LEDs sit in parts with a front flange
+larger than their panel hole (FuseGrommet, the rocker bezel, led_grommet),
+so marks keep CLEAR from those flanges rather than from the holes. The
+LED grommets frame the LEDs themselves, so there are no rings around them
+(the leftmost channel LED's flange is only 1 mm from the STATUS one's).
+
+Channels are numbered 1..6 left to right, the reverse of the hardware
+order (J23 = PyroStage1 = LED_CHN_1 is the rightmost jack pair, labelled 6).
+The satellite firmware must map panel channel n to PyroStage(7 - n).
+
+Every mark is at least MIN_LINE wide, the minimum line width for a UV DTF
+transfer (frontpanel_uvdtf.py): text() checks the thinnest stroke of each
+Noto Sans label and refuses anything thinner.
 
 Layers:
   engrave  - black fills, the only thing the laser should mark
   outline  - panel contour and holes as red hairlines, for alignment only
+  flanges  - front flanges of the grommets and the rocker bezel as blue
+             hairlines, for checking clearances only
 """
 
 import math
@@ -23,19 +38,22 @@ import subprocess
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-W, H, R_CORNER = 220.0, 117.0, 4.5
+W, H, R_CORNER = 219.8, 116.8, 4.5
 CLEAR = 2.0  # minimum distance from any hole edge
+MIN_LINE = 0.5  # UV DTF minimum line width
+LINE = 0.6      # width of the rules, the key arc and the unit box
 
 # ---- holes (front view) -------------------------------------------------
 
 MOUNT_R = 1.7
-MOUNT = [(sx * 105, sy * 53.5) for sx in (-1, 1) for sy in (-1, 1)] + \
-        [(sx * 35, sy * 53.5) for sx in (-1, 1) for sy in (-1, 1)] + \
-        [(-105, 0), (105, 0)]
+MOUNT = [(sx * 104.9, sy * 53.4) for sx in (-1, 1) for sy in (-1, 1)] + \
+        [(sx * 34.967, sy * 53.4) for sx in (-1, 1) for sy in (-1, 1)] + \
+        [(-104.9, 0), (104.9, 0)]
 
 PITCH = 21.0
-JACK_R = 3.8
-LED_R = 3.0
+JACK_R = 4.0
+LED_R = 4.0
+LED_FLANGE_R = 5.0  # led_grommet front flange
 # channel k (0..5): J23, J22, J18, J19, J20, J21 = PyroStage1..6
 JACK_NEG = [(43.5 - PITCH * k, 27.5) for k in range(6)]     # pad 1, low side
 JACK_POS = [(35.475 - PITCH * k, 37.0) for k in range(6)]   # pad 2, PYRO_H
@@ -50,6 +68,10 @@ KEY, KEY_R = (71.0, 33.7), 11.15
 KEY_NOTCH = (69.9, 72.1, 20.75)    # x0, x1, y of notch end (above circle)
 ROCKER = (60.0, -47.5, 82.0, -17.3)  # x0, y0, x1, y1
 FUSE = (89.5, -44.65, 100.0, -20.15)  # x0, y0, x1, y1, next to the rocker
+ROCKER_BEZEL = (56.8, -50.9, 85.2, -13.9)
+# FuseGrommet front flange: a stadium with round ends, around the fuse cutout
+FUSE_FLANGE = (87.75, -52.7, 101.75, -12.1)  # x0, y0, x1, y1
+FUSE_FLANGE_R = 7.0
 BUTTON, BUTTON_R = (71.0, 2.65), 6.0  # continuity test (CONT_TEST_REQ)
 
 # Key positions (SVG angle, 0 = 3 o'clock, -90 = 12 o'clock): OFF at
@@ -58,17 +80,26 @@ KEY_OFF_DEG, KEY_ON_DEG = -90.0, 0.0
 
 # ---- fonts --------------------------------------------------------------
 
-LABEL_FONT = "font-family:'Noto Sans';font-weight:600"
+LABEL_FONT = "font-family:'Noto Sans';font-weight:800"
+STRONG_FONT = "font-family:'Noto Sans';font-weight:900"
 TITLE_FONT = "font-family:'Noto Sans';font-weight:700"
 NUM_FONT = "font-family:'Nimbus Sans Narrow';font-weight:700"
 CAP = 0.714  # cap height / em for Noto Sans
 NUM_CAP = 0.72
+# Thinnest stroke / em per Noto Sans weight: the horizontals (E arms, H bar,
+# O top), measured on the installed NotoSans-*.ttf.
+THIN = {600: 0.107, 700: 0.124, 800: 0.138, 900: 0.155}
 
 
 def text(x, y, s, cap, style=LABEL_FONT, anchor="middle", spacing=0.0,
          cap_ratio=CAP):
     """Text whose cap height is `cap` mm, vertically centred on y."""
     size = cap / cap_ratio
+    if "'Noto Sans'" in style:
+        weight = int(style.split("font-weight:")[1])
+        if size * THIN[weight] < MIN_LINE:
+            raise ValueError(f"{s!r}: {size * THIN[weight]:.2f} mm strokes, "
+                             f"under the {MIN_LINE} mm minimum")
     return (f'<text x="{x:.3f}" y="{y + cap / 2:.3f}" '
             f'style="{style};font-size:{size:.3f}px;'
             f'letter-spacing:{spacing:.3f}px;text-anchor:{anchor}">{s}</text>')
@@ -79,20 +110,12 @@ def rect(x0, y0, x1, y1, r=0.0):
             f'height="{y1 - y0:.3f}" rx="{r:.3f}"/>')
 
 
-def hline(x0, x1, y, w=0.4):
+def hline(x0, x1, y, w=LINE):
     return rect(x0, y - w / 2, x1, y + w / 2, w / 2)
 
 
-def vline(x, y0, y1, w=0.4):
+def vline(x, y0, y1, w=LINE):
     return rect(x - w / 2, y0, x + w / 2, y1, w / 2)
-
-
-def ring(cx, cy, r_in, r_out):
-    def circ(r, sweep):
-        return (f"M{cx + r:.3f},{cy:.3f} A{r:.3f},{r:.3f} 0 1 {sweep} "
-                f"{cx - r:.3f},{cy:.3f} A{r:.3f},{r:.3f} 0 1 {sweep} "
-                f"{cx + r:.3f},{cy:.3f} Z")
-    return f'<path d="{circ(r_out, 1)} {circ(r_in, 0)}"/>'
 
 
 def arc_band(cx, cy, r_in, r_out, a0, a1):
@@ -149,22 +172,27 @@ def engrave():
     RX = 93.0       # right column label centre
     CX = (JACK_POS[5][0] - JACK_R + JACK_NEG[0][0] + JACK_R) / 2  # channel block centre
 
+    # One row of labels under the fuse flange: POWER and FUSE on the right,
+    # CONTINUITY under the channel LEDs
+    ry = FUSE_FLANGE[3] + CLEAR + SMALL / 2
+
     # Right column: main power and fuse side by side, labelled in one row
     # underneath; continuity test button; key
-    ry = -12.0
     rx = (ROCKER[0] + ROCKER[2]) / 2
     e.append(power_icon(rx - 9.0, ry, r=2.0, w=0.5))
     e.append(text(rx - 4.9, ry, "POWER", SMALL, anchor="start", spacing=0.3))
     e.append(text((FUSE[0] + FUSE[2]) / 2, ry, "FUSE", SMALL, spacing=0.3))
 
-    # centred in the gap between the button and the (105, 0) mounting hole
-    bx = (BUTTON[0] + BUTTON_R + 105.0 - MOUNT_R) / 2
-    e.append(text(bx, BUTTON[1] - 2.1, "CONTINUITY", 1.8, spacing=0.2))
-    e.append(text(bx, BUTTON[1] + 2.1, "TEST", SMALL, spacing=0.3))
+    # centred in the gap between the button and the (104.9, 0) mounting hole
+    bx = (BUTTON[0] + BUTTON_R + MOUNT[-1][0] - MOUNT_R) / 2
+    e.append(text(bx, BUTTON[1] - 2.1, "CONTINUITY", 2.35, style=STRONG_FONT))
+    e.append(text(bx, BUTTON[1] + 2.1, "TEST", 2.35, style=STRONG_FONT,
+                  spacing=0.3))
 
     e.append(text(KEY[0], KEY[1] + KEY_R + CLEAR + 3.5, "PYRO ENABLE", SMALL,
                   spacing=0.3))
-    e.append(arc_band(*KEY, 15.3, 15.7, KEY_OFF_DEG, KEY_ON_DEG))
+    e.append(arc_band(*KEY, 15.5 - LINE / 2, 15.5 + LINE / 2, KEY_OFF_DEG,
+                            KEY_ON_DEG))
     for a in (KEY_OFF_DEG, KEY_ON_DEG):
         e.append(radial(*KEY, 15.0, 17.5, a, 0.6))
     x, y = polar(KEY, 17.5, KEY_OFF_DEG)    # 12 o'clock: label above
@@ -173,7 +201,7 @@ def engrave():
     e.append(text(x + 1.2, y, "ON", SMALL, anchor="start", spacing=0.2))
 
     # Separator between channels and controls
-    e.append(vline(52.5, -44.0, 46.0, 0.35))
+    e.append(vline(52.5, -44.0, 46.0))
 
     # Channels
     for k in range(6):
@@ -182,16 +210,15 @@ def engrave():
         lx, ly = CH_LED[k]
         e.append(plus(px, py + JACK_R + CLEAR + 2.3))
         e.append(minus(nx, ny - JACK_R - CLEAR - 2.3))
-        e.append(text((CH_X[k] + lx) / 2, 4.0, str(k + 1), 9.0,
+        e.append(text((CH_X[k] + lx) / 2, 4.0, str(6 - k), 9.0,
                       style=NUM_FONT, cap_ratio=NUM_CAP))
-        e.append(ring(lx, ly, LED_R + 2.2, LED_R + 2.6))
         if k < 5:
-            e.append(vline(CH_X[k] - PITCH / 2, -6.0, 44.0, 0.35))
+            e.append(vline(CH_X[k] - PITCH / 2, -5.0, 44.0))
 
-    e.append(text(CX, -10.5, "CONTINUITY", 2.0, spacing=0.8))
+    e.append(text(CX, ry, "CONTINUITY", SMALL, spacing=0.8))
 
     # Left column
-    lx0 = LED_STATUS[0] - LED_R - CLEAR - 2.0
+    lx0 = LED_STATUS[0] - LED_FLANGE_R - CLEAR
     e.append(text(lx0, LED_STATUS[1], "STATUS", SMALL, anchor="end",
                   spacing=0.3))
     e.append(text(lx0, LED_ARMED[1], "ARMED", SMALL, anchor="end",
@@ -201,23 +228,24 @@ def engrave():
 
     # Unit ID field (write-on / sticker area)
     box = (-99.0, 26.0, -79.0, 40.0)
+    ri = round(1.5 - LINE, 3)  # inner corner radius
     e.append(text((box[0] + box[2]) / 2, box[1] - 4.5, "UNIT", SMALL,
                   spacing=0.9))
     e.append(f'<path fill-rule="evenodd" d="'
              f'M{box[0]},{box[1] + 1.5} a1.5,1.5 0 0 1 1.5,-1.5 H{box[2] - 1.5} '
              f'a1.5,1.5 0 0 1 1.5,1.5 V{box[3] - 1.5} a1.5,1.5 0 0 1 -1.5,1.5 '
              f'H{box[0] + 1.5} a1.5,1.5 0 0 1 -1.5,-1.5 Z '
-             f'M{box[0] + 0.4},{box[1] + 1.5} V{box[3] - 1.5} '
-             f'a1.1,1.1 0 0 0 1.1,1.1 H{box[2] - 1.5} a1.1,1.1 0 0 0 1.1,-1.1 '
-             f'V{box[1] + 1.5} a1.1,1.1 0 0 0 -1.1,-1.1 H{box[0] + 1.5} '
-             f'a1.1,1.1 0 0 0 -1.1,1.1 Z"/>')
+             f'M{box[0] + LINE},{box[1] + 1.5} V{box[3] - 1.5} '
+             f'a{ri},{ri} 0 0 0 {ri},{ri} H{box[2] - 1.5} a{ri},{ri} 0 0 0 {ri},{-ri} '
+             f'V{box[1] + 1.5} a{ri},{ri} 0 0 0 {-ri},{-ri} H{box[0] + 1.5} '
+             f'a{ri},{ri} 0 0 0 {-ri},{ri} Z"/>')
 
     # Title
     tx = CX
     e.append(text(tx, -41.0, "ALTURIA", 8.0, style=TITLE_FONT, spacing=3.2))
     e.append(text(tx, -32.0, "LAUNCH CONTROL", 2.8, spacing=1.6))
-    e.append(hline(tx - 52.0, tx - 32.0, -32.0, 0.35))
-    e.append(hline(tx + 32.0, tx + 52.0, -32.0, 0.35))
+    e.append(hline(tx - 52.0, tx - 32.0, -32.0))
+    e.append(hline(tx + 32.0, tx + 52.0, -32.0))
     return e
 
 
@@ -244,6 +272,15 @@ def outline():
     return o
 
 
+def flanges():
+    f = []
+    for c in CH_LED + [LED_STATUS, LED_ARMED]:
+        f.append(f'<circle cx="{c[0]}" cy="{c[1]}" r="{LED_FLANGE_R}"/>')
+    f.append(rect(*ROCKER_BEZEL))
+    f.append(rect(*FUSE_FLANGE, FUSE_FLANGE_R))
+    return f
+
+
 def svg(show_engrave=True, show_outline=True):
     x0, y0 = -W / 2, -H / 2
     parts = [
@@ -258,6 +295,11 @@ def svg(show_engrave=True, show_outline=True):
                      'inkscape:label="outline (do not engrave)" '
                      'fill="none" stroke="#ff0000" stroke-width="0.1">')
         parts += outline()
+        parts.append('</g>')
+        parts.append('<g id="flanges" inkscape:groupmode="layer" '
+                     'inkscape:label="flanges (do not engrave)" '
+                     'fill="none" stroke="#0000ff" stroke-width="0.1">')
+        parts += flanges()
         parts.append('</g>')
     if show_engrave:
         parts.append('<g id="engrave" inkscape:groupmode="layer" '

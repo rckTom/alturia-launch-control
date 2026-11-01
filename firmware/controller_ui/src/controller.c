@@ -10,6 +10,7 @@
 
 #include "controller.h"
 #include "inputs.h"
+#include "power.h"
 
 LOG_MODULE_REGISTER(controller, LOG_LEVEL_INF);
 
@@ -30,6 +31,7 @@ LOG_MODULE_REGISTER(controller, LOG_LEVEL_INF);
 
 static struct ctrl_view v = {
 	.sat = {[0 ... NUM_SATS - 1] = {.ok_since = -1}},
+	.diag = DIAG_NONE,
 };
 
 static int64_t next_tx;
@@ -281,7 +283,7 @@ static void disarm_all(void)
 	send_poll();
 }
 
-/* Disarm everything and show a fault that stays until SAFE is pressed */
+/* Disarm everything and show a fault that stays until BACK is pressed */
 static void fault(const char *fmt, int sat)
 {
 	disarm_all();
@@ -337,7 +339,7 @@ static const char *arm_block_reason(void)
 	uint8_t masks[NUM_SATS];
 
 	if (v.selected == 0) {
-		return "Select pads with the knob";
+		return "Select pads with OK";
 	}
 
 	selection_masks(masks);
@@ -598,82 +600,67 @@ static int wrap(int value, int count)
 	return ((value % count) + count) % count;
 }
 
-static void setup_turn(int steps)
+/* Left/right: change the value of the field under the cursor */
+static void setup_adjust(int steps)
+{
+	struct pad_setup *su = &v.setup;
+	struct pad_cfg *cfg = &su->cfg;
+
+	if (su->mode == SETUP_LABEL) {
+		su->pos = CLAMP(su->pos + steps, 0, PAD_LABEL_MAX - 1);
+		return;
+	}
+	switch (su->field) {
+	case FIELD_TYPE:
+		cfg->type = wrap(cfg->type + steps, PAD_TYPE_COUNT);
+		break;
+	case FIELD_SAT:
+		cfg->sat = wrap(cfg->sat + steps, NUM_SATS);
+		break;
+	case FIELD_IGN:
+		cfg->ign = wrap(cfg->ign + steps, NUM_CHANNELS);
+		break;
+	case FIELD_FILL:
+		cfg->fill = wrap(cfg->fill + steps, NUM_CHANNELS);
+		break;
+	case FIELD_VENT:
+		cfg->vent = wrap(cfg->vent + steps, NUM_CHANNELS);
+		break;
+	default:
+		break;
+	}
+}
+
+/* Up/down: move between fields, or change the label character */
+static void setup_cursor(int steps)
 {
 	static const char charset[] = LABEL_CHARSET;
 	struct pad_setup *su = &v.setup;
 	struct pad_cfg *cfg = &su->cfg;
 
-	switch (su->mode) {
-	case SETUP_FIELDS: {
-		/* Step over hidden fields, stop at the ends */
-		int dir = steps > 0 ? 1 : -1;
-
-		for (int n = abs(steps); n > 0; n--) {
-			int f = su->field + dir;
-
-			while (f >= 0 && f < FIELD_COUNT && !field_visible(cfg, f)) {
-				f += dir;
-			}
-			if (f < 0 || f >= FIELD_COUNT) {
-				break;
-			}
-			su->field = f;
-		}
-		break;
-	}
-	case SETUP_VALUE:
-		switch (su->field) {
-		case FIELD_TYPE:
-			cfg->type = wrap(cfg->type + steps, PAD_TYPE_COUNT);
-			break;
-		case FIELD_SAT:
-			cfg->sat = wrap(cfg->sat + steps, NUM_SATS);
-			break;
-		case FIELD_IGN:
-			cfg->ign = wrap(cfg->ign + steps, NUM_CHANNELS);
-			break;
-		case FIELD_FILL:
-			cfg->fill = wrap(cfg->fill + steps, NUM_CHANNELS);
-			break;
-		case FIELD_VENT:
-			cfg->vent = wrap(cfg->vent + steps, NUM_CHANNELS);
-			break;
-		}
-		break;
-	case SETUP_LABEL: {
+	if (su->mode == SETUP_LABEL) {
 		char *c = &su->label[su->pos];
 		const char *at = strchr(charset, *c);
 		int i = at ? at - charset : 0;
 
-		*c = charset[wrap(i + steps, sizeof(charset) - 1)];
-		break;
+		/* Up is the next character */
+		*c = charset[wrap(i - steps, sizeof(charset) - 1)];
+		return;
 	}
-	}
-}
 
-static void setup_push(void)
-{
-	struct pad_setup *su = &v.setup;
+	/* Step over hidden fields, stop at the ends */
+	int dir = steps > 0 ? 1 : -1;
 
-	switch (su->mode) {
-	case SETUP_FIELDS:
-		su->undo = su->cfg;
-		if (su->field == FIELD_LABEL) {
-			snprintf(su->label, sizeof(su->label), "%-*s", PAD_LABEL_MAX,
-				 su->cfg.label);
-			su->pos = 0;
-			su->mode = SETUP_LABEL;
-		} else {
-			su->mode = SETUP_VALUE;
+	for (int n = abs(steps); n > 0; n--) {
+		int f = su->field + dir;
+
+		while (f >= 0 && f < FIELD_COUNT && !field_visible(cfg, f)) {
+			f += dir;
 		}
-		break;
-	case SETUP_VALUE:
-		su->mode = SETUP_FIELDS;
-		break;
-	case SETUP_LABEL:
-		su->pos = (su->pos + 1) % PAD_LABEL_MAX;
-		break;
+		if (f < 0 || f >= FIELD_COUNT) {
+			break;
+		}
+		su->field = f;
 	}
 }
 
@@ -690,6 +677,22 @@ static void setup_label_done(void)
 	su->mode = SETUP_FIELDS;
 }
 
+/* OK: edit the label, or step any other value on */
+static void setup_push(void)
+{
+	struct pad_setup *su = &v.setup;
+
+	if (su->mode == SETUP_LABEL) {
+		setup_label_done();
+	} else if (su->field == FIELD_LABEL) {
+		snprintf(su->label, sizeof(su->label), "%-*s", PAD_LABEL_MAX, su->cfg.label);
+		su->pos = 0;
+		su->mode = SETUP_LABEL;
+	} else {
+		setup_adjust(1);
+	}
+}
+
 /* While the setup screen is open it consumes every request */
 static void setup_handle(const struct ctrl_req *req)
 {
@@ -697,7 +700,10 @@ static void setup_handle(const struct ctrl_req *req)
 
 	switch (req->type) {
 	case CTRL_REQ_CURSOR:
-		setup_turn(req->arg);
+		setup_cursor(req->arg);
+		break;
+	case CTRL_REQ_ADJUST:
+		setup_adjust(req->arg);
 		break;
 	case CTRL_REQ_SELECT:
 		setup_push();
@@ -710,18 +716,19 @@ static void setup_handle(const struct ctrl_req *req)
 			setup_save();
 		}
 		break;
-	case CTRL_REQ_SAFE:
-		/* SAFE backs out one level: field edit, then the whole screen */
-		if (su->mode == SETUP_FIELDS) {
+	case CTRL_REQ_BACK:
+		/* BACK backs out one level: the label edit, then the whole screen */
+		if (su->mode == SETUP_LABEL) {
+			su->mode = SETUP_FIELDS;
+		} else {
 			su->active = false;
 			message(MSG_INFO, "Pad %d setup cancelled", su->pad + 1);
-		} else {
-			su->cfg = su->undo;
-			su->mode = SETUP_FIELDS;
 		}
 		break;
+	case CTRL_REQ_BACK_LONG:
+		break;
 	default:
-		message(MSG_WARN, "Finish the pad setup first (hold to save, SAFE to cancel)");
+		message(MSG_WARN, "Finish the pad setup first (hold OK to save, BACK to cancel)");
 		break;
 	}
 
@@ -787,7 +794,7 @@ static void pair_handle(const struct ctrl_req *req)
 			pv->phase = PAIR_CONFIRMED;
 		}
 		break;
-	case CTRL_REQ_SAFE:
+	case CTRL_REQ_BACK:
 		/* Back out; past the scan this also tells the satellite */
 		if (pv->phase != PAIR_SCAN) {
 			link_pair_confirm(false);
@@ -795,8 +802,11 @@ static void pair_handle(const struct ctrl_req *req)
 		pair_close();
 		message(MSG_INFO, "Pairing satellite %c cancelled", sat_name(pv->sat));
 		break;
+	case CTRL_REQ_ADJUST:
+	case CTRL_REQ_BACK_LONG:
+		break;
 	default:
-		message(MSG_WARN, "Finish pairing first (SAFE to cancel)");
+		message(MSG_WARN, "Finish pairing first (BACK to cancel)");
 		break;
 	}
 }
@@ -884,11 +894,14 @@ static void sats_handle(const struct ctrl_req *req)
 			message(MSG_INFO, "Satellite %c forgotten", sat_name(sat));
 		}
 		break;
-	case CTRL_REQ_SAFE:
+	case CTRL_REQ_BACK:
 		v.sats.active = false;
 		break;
+	case CTRL_REQ_ADJUST:
+	case CTRL_REQ_BACK_LONG:
+		break;
 	default:
-		message(MSG_WARN, "Leave the settings first (SAFE)");
+		message(MSG_WARN, "Leave the settings first (BACK)");
 		break;
 	}
 }
@@ -899,8 +912,7 @@ static void settings_open(void)
 		message(MSG_WARN, "Settings are only available in SAFE");
 		return;
 	}
-	v.settings.active = true;
-	v.settings.cursor = v.cursor;
+	v.settings = (struct menu_view){.active = true};
 }
 
 static void settings_close(void)
@@ -909,27 +921,119 @@ static void settings_close(void)
 	fix_cursor();
 }
 
-/* While the settings screen is open it consumes every request */
+static void power_ask(void)
+{
+	if (v.state != CTRL_SAFE) {
+		message(MSG_WARN, "Disarm before switching off");
+		return;
+	}
+	v.power_confirm = true;
+}
+
+/* While the power off question is open it consumes every request */
+static void power_handle(const struct ctrl_req *req)
+{
+	switch (req->type) {
+	case CTRL_REQ_SELECT:
+		v.power_confirm = false;
+		if (!power_can_off()) {
+			message(MSG_WARN, "This controller cannot switch itself off");
+			break;
+		}
+		v.powering_off = true;
+		power_off();
+		break;
+	case CTRL_REQ_BACK:
+		v.power_confirm = false;
+		break;
+	default:
+		break;
+	}
+}
+
+static void menu_move(struct menu_view *m, int steps, int count)
+{
+	m->cursor = CLAMP(m->cursor + steps, 0, count - 1);
+}
+
+/* Settings menu */
 static void settings_handle(const struct ctrl_req *req)
 {
 	switch (req->type) {
 	case CTRL_REQ_CURSOR:
-		v.settings.cursor =
-			CLAMP(v.settings.cursor + req->arg, SETTINGS_SATS, NUM_PADS - 1);
+		menu_move(&v.settings, req->arg, SETTINGS_COUNT);
 		break;
 	case CTRL_REQ_SELECT:
-		if (v.settings.cursor == SETTINGS_SATS) {
+		switch (v.settings.cursor) {
+		case SETTINGS_PADS:
+			v.pad_list = (struct menu_view){.active = true, .cursor = v.cursor};
+			break;
+		case SETTINGS_SATS:
 			v.sats.active = true;
-		} else {
-			setup_open(v.settings.cursor);
+			break;
+		case SETTINGS_DIAG:
+			v.diag_menu = (struct menu_view){.active = true};
+			break;
+		case SETTINGS_OFF:
+			power_ask();
+			break;
 		}
 		break;
 	case CTRL_REQ_EDIT:
-	case CTRL_REQ_SAFE:
+	case CTRL_REQ_BACK:
 		settings_close();
 		break;
+	case CTRL_REQ_ADJUST:
+	case CTRL_REQ_BACK_LONG:
+		break;
 	default:
-		message(MSG_WARN, "Leave the settings first (SAFE)");
+		message(MSG_WARN, "Leave the settings first (BACK)");
+		break;
+	}
+}
+
+/* Pad list: all pads, OK sets one up */
+static void pad_list_handle(const struct ctrl_req *req)
+{
+	switch (req->type) {
+	case CTRL_REQ_CURSOR:
+		menu_move(&v.pad_list, req->arg, NUM_PADS);
+		break;
+	case CTRL_REQ_SELECT:
+		setup_open(v.pad_list.cursor);
+		break;
+	case CTRL_REQ_BACK:
+		v.pad_list.active = false;
+		break;
+	case CTRL_REQ_ADJUST:
+	case CTRL_REQ_EDIT:
+	case CTRL_REQ_BACK_LONG:
+		break;
+	default:
+		message(MSG_WARN, "Leave the settings first (BACK)");
+		break;
+	}
+}
+
+/* Diagnostics menu */
+static void diag_menu_handle(const struct ctrl_req *req)
+{
+	switch (req->type) {
+	case CTRL_REQ_CURSOR:
+		menu_move(&v.diag_menu, req->arg, DIAG_COUNT);
+		break;
+	case CTRL_REQ_SELECT:
+		v.diag = v.diag_menu.cursor;
+		break;
+	case CTRL_REQ_BACK:
+		v.diag_menu.active = false;
+		break;
+	case CTRL_REQ_ADJUST:
+	case CTRL_REQ_EDIT:
+	case CTRL_REQ_BACK_LONG:
+		break;
+	default:
+		message(MSG_WARN, "Leave the settings first (BACK)");
 		break;
 	}
 }
@@ -939,10 +1043,28 @@ static void drain_requests(void)
 	struct ctrl_req req;
 
 	while (k_msgq_get(&req_q, &req, K_NO_WAIT) == 0) {
+		if (v.powering_off) {
+			continue;
+		}
+		if (v.power_confirm) {
+			power_handle(&req);
+			continue;
+		}
+		if (req.type == CTRL_REQ_POWER) {
+			power_ask();
+			continue;
+		}
 		if (v.fault_active) {
-			if (req.type == CTRL_REQ_SAFE) {
+			if (req.type == CTRL_REQ_BACK) {
 				v.fault_active = false;
 				message(MSG_INFO, "Fault acknowledged");
+			}
+			continue;
+		}
+		/* The button test takes every button, so only holding BACK leaves it */
+		if (v.diag != DIAG_NONE) {
+			if (req.type == (v.diag == DIAG_BUTTONS ? CTRL_REQ_BACK_LONG : CTRL_REQ_BACK)) {
+				v.diag = DIAG_NONE;
 			}
 			continue;
 		}
@@ -956,6 +1078,14 @@ static void drain_requests(void)
 		}
 		if (v.setup.active) {
 			setup_handle(&req);
+			continue;
+		}
+		if (v.pad_list.active) {
+			pad_list_handle(&req);
+			continue;
+		}
+		if (v.diag_menu.active) {
+			diag_menu_handle(&req);
 			continue;
 		}
 		if (v.settings.active) {
@@ -984,14 +1114,16 @@ static void drain_requests(void)
 		case CTRL_REQ_ARM:
 			request_arm();
 			break;
-		case CTRL_REQ_SAFE:
-			request_safe("SAFE button");
+		case CTRL_REQ_BACK:
+			request_safe("BACK pressed");
 			break;
 		case CTRL_REQ_FILL:
 			request_valve(HYB_FILLING);
 			break;
 		case CTRL_REQ_VENT:
 			request_valve(HYB_VENTING);
+			break;
+		default:
 			break;
 		}
 	}

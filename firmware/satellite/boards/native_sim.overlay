@@ -1,8 +1,7 @@
 /*
  * The satellite on native_sim, as a node of the radio network simulator
  * (tools/radiosim). Every output the real board drives is a pin of the
- * emulated gpio0 so the simulator can show it; the ADCs are emulators, and
- * there is no INA226 (rail.c reads a quiet rail without it).
+ * emulated gpio0 so the simulator can show it, and the ADCs are emulators.
  *
  *   gpio0  0      status LED (the board's led0)
  *          1-6    high-side enables EN_H1..6

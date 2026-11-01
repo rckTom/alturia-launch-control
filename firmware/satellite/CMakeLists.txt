@@ -2,6 +2,9 @@
 
 cmake_minimum_required(VERSION 3.20.0)
 
+# The satellite board itself: firmware/boards/others/alturia_satellite.
+list(APPEND BOARD_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/..)
+
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(launch_satellite)
 
@@ -12,6 +15,7 @@ target_sources(app PRIVATE
 	src/channels.c
 	src/rail.c
 	src/shell_cmds.c
+	src/arm.c
 )
 
 # The satellite's end of the secure LoRa link, shared with the bench.
@@ -22,6 +26,10 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../common/link/link_sec.cmake)
 # Command and status payloads, shared with the controller.
 target_include_directories(app PRIVATE ../common/wire)
 target_sources(app PRIVATE ../common/wire/sat_wire.c)
+
+# Buzzer tunes, shared with the controller.
+target_include_directories(app PRIVATE ../common/chime)
+target_sources(app PRIVATE ../common/chime/chime.c)
 
 # native_sim: LEDs and pairing button in the radio network simulator's UI.
 if(LSEC_RADIO_SIM)

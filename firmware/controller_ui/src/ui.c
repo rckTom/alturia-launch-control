@@ -3,9 +3,10 @@
  * touch: all input comes from the physical controls. Only black and
  * white exist, so emphasis is done with inversion, never with color.
  *
- * List view (SAFE, ARMING):
+ * List view (SAFE, ARMING), with the controller's own battery after the
+ * state (a bolt while charging):
  *  +------------------------------------------------+
- *  | SAFE               [A  12.4V]  [#B##NO#LINK#]  |
+ *  | SAFE  /[###  ]78%  [A  12.4V]  [#B##NO#LINK#]  |
  *  |------------------------------------------------|
  *  |   ALFA     HYB   A        (only pads of        |
  *  | > #Pad 2###RKT###A#######connected satellites)#| <- cursor, selected
@@ -24,7 +25,7 @@
  *  Pad 2    OPEN
  *
  * Rows are sorted: continuity problems first, then hybrid pads (for their
- * valve state), then the rest. The encoder scrolls when they do not fit.
+ * valve state), then the rest. Up and down scroll when they do not fit.
  *
  * Continuity is only shown here: the satellite reads it from the armed
  * rail. Before arming it only runs its own shorted-output check.
@@ -36,14 +37,25 @@
  * the second or so the satellites take to confirm the fire pulse; what is
  * left of it when the state ends is simply cut off.
  *
- * Fault view: one sentence in a heavy frame, until SAFE acknowledges it.
+ * Fault view: one sentence in a heavy frame, until BACK acknowledges it.
  *
- * Settings: all pads including OFF ones, with their channels. The main
- * list only shows enabled pads. A "Satellites" entry in the title bar
- * leads to the satellites screen.
+ * Settings: a menu of the screens below, with a line of state each.
+ *
+ * Pads: all pads including OFF ones, with their channels. The main list
+ * only shows enabled pads.
  *
  * Satellites: one row per satellite slot with its paired satellite and
- * link state. Push pairs, hold forgets.
+ * link state. OK pairs, holding OK forgets.
+ *
+ * Diagnostics: a menu of
+ *  - Buttons: a box per button, inverted while it is down, with its press
+ *    count, and the last few presses and releases. Every button is shown
+ *    instead of acting, so only holding BACK leaves.
+ *  - Battery: everything the fuel gauge and the charger report.
+ *
+ * Power off: asks before dropping the power latch.
+ *
+ * Splash: the logo while starting up and while switching off.
  *
  * Pairing: first the satellites heard in pairing mode, then the 4x6
  * pattern the operator compares with the satellite's channel LEDs:
@@ -64,6 +76,8 @@
 
 #include "controller.h"
 #include "fonts/ui_fonts.h"
+#include "battery.h"
+#include "inputs.h"
 #include "ui.h"
 
 #define W 400
@@ -89,6 +103,16 @@ static lv_obj_t *sat_text[NUM_SATS];
 static struct row rows[NUM_PADS];
 static lv_obj_t *cursor_label;
 static lv_obj_t *footer_label;
+
+/* Controller battery in the list view's title bar */
+#define BATT_X 94
+#define BATT_W 24
+#define BATT_H 14
+
+static lv_obj_t *batt_icon;
+static lv_obj_t *batt_fill;
+static lv_obj_t *batt_bolt;
+static lv_obj_t *batt_text;
 
 /* Armed view */
 static lv_obj_t *armed_view;
@@ -156,15 +180,31 @@ static uint32_t launch_frame;
 static lv_obj_t *fault_view;
 static lv_obj_t *fault_text;
 
-/* Settings */
-static lv_obj_t *settings_view;
+/* Menus: the settings menu and the diagnostics menu */
+#define MENU_Y0  34
+#define MENU_H   32
+#define MENU_MAX 4
+
+struct menu_ui {
+	lv_obj_t *view;
+	lv_obj_t *row[MENU_MAX];
+	lv_obj_t *detail[MENU_MAX];
+	lv_obj_t *cursor;
+	int count;
+};
+
+static struct menu_ui settings_menu;
+static struct menu_ui diag_menu;
+
+/* Pad list */
+static lv_obj_t *padlist_view;
 enum { SCOL_NUM, SCOL_LABEL, SCOL_TYPE, SCOL_SAT, SCOL_CHANNELS, SCOL_COUNT };
 
-static const int32_t settings_col_x[SCOL_COUNT] = {6, 28, 90, 160, 184};
+static const int32_t padlist_col_x[SCOL_COUNT] = {6, 28, 90, 160, 184};
 
-static lv_obj_t *settings_rows[NUM_PADS];
-static lv_obj_t *settings_col[NUM_PADS][SCOL_COUNT];
-static lv_obj_t *settings_cursor;
+static lv_obj_t *padlist_rows[NUM_PADS];
+static lv_obj_t *padlist_col[NUM_PADS][SCOL_COUNT];
+static lv_obj_t *padlist_cursor;
 
 /* Pad setup */
 #define SETUP_Y0 33
@@ -183,9 +223,6 @@ static lv_obj_t *setup_char_box[PAD_LABEL_MAX];
 static lv_obj_t *setup_char[PAD_LABEL_MAX];
 static lv_obj_t *setup_help;
 static lv_obj_t *setup_error;
-
-/* Settings: the satellites entry in the title bar */
-static lv_obj_t *settings_sats_box;
 
 /* Satellites */
 #define SATS_Y0 40
@@ -216,6 +253,46 @@ static lv_obj_t *pair_cursor;
 static lv_obj_t *pair_grid;
 static lv_obj_t *pair_dot[LSEC_SAS_FRAMES][LSEC_SAS_LEDS];
 static lv_obj_t *pair_help;
+
+/* Button test */
+#define DIAG_COLS  4
+#define DIAG_Y0    33
+#define DIAG_W     94
+#define DIAG_H     36
+#define DIAG_LOG_Y 161
+
+static lv_obj_t *diag_view;
+static lv_obj_t *diag_title;
+static lv_obj_t *diag_hint;
+static lv_obj_t *diag_page[DIAG_COUNT];
+static lv_obj_t *diag_box[BTN_COUNT];
+static lv_obj_t *diag_text[BTN_COUNT];
+static lv_obj_t *diag_log[INPUTS_LOG_LEN];
+
+/* Battery page: two columns of name / value rows */
+enum {
+	BROW_SOC, BROW_VOLTAGE, BROW_TO_EMPTY, BROW_TO_FULL, BROW_PGOOD, BROW_INPUT, BROW_STATUS,
+	BROW_HEALTH, BROW_ICHG, BROW_VREG, BROW_IINLIM, BROW_VINDPM, BROW_IPRECHG, BROW_ITERM,
+	BROW_COUNT,
+};
+
+#define BROW_PER_COL 7
+#define BROW_Y0      34
+#define BROW_H       25
+
+static lv_obj_t *batt_value[BROW_COUNT];
+
+/* Splash */
+#define SPLASH_MS 1500
+
+LV_IMAGE_DECLARE(ui_logo);
+
+static lv_obj_t *splash_view;
+static lv_obj_t *splash_text;
+static int64_t splash_until;
+
+/* Power off */
+static lv_obj_t *power_view;
 
 static lv_color_t fg(bool inverted)
 {
@@ -275,8 +352,9 @@ static void set_inverted(lv_obj_t *obj, bool inverted)
 
 static void show_only(lv_obj_t *view)
 {
-	lv_obj_t *views[] = {list_view, armed_view, launch_view, fault_view, settings_view,
-			     setup_view, sats_view, pair_view};
+	lv_obj_t *views[] = {list_view, armed_view, launch_view, fault_view, settings_menu.view,
+			     padlist_view, setup_view, sats_view, pair_view, diag_menu.view, diag_view,
+			     power_view, splash_view};
 
 	ARRAY_FOR_EACH(views, i) {
 		if (views[i] == view) {
@@ -294,6 +372,31 @@ static void create_list_view(lv_obj_t *scr)
 
 	state_label = make_label(list_view, FONT_MEDIUM);
 	lv_obj_set_pos(state_label, 8, 5);
+
+	/* Battery: outlined body, a fill for the charge, the terminal nub */
+	static lv_point_precise_t bolt_pts[] = {{6, 0}, {1, 8}, {6, 8}, {2, 16}};
+
+	batt_bolt = lv_line_create(list_view);
+	lv_line_set_points(batt_bolt, bolt_pts, ARRAY_SIZE(bolt_pts));
+	lv_obj_set_style_line_width(batt_bolt, 2, 0);
+	lv_obj_set_style_line_color(batt_bolt, lv_color_black(), 0);
+	lv_obj_set_pos(batt_bolt, BATT_X - 10, 5);
+
+	batt_icon = make_box(list_view, BATT_X, 7, BATT_W, BATT_H);
+	set_inverted(batt_icon, false);
+	lv_obj_set_style_border_width(batt_icon, 2, 0);
+	lv_obj_set_style_border_color(batt_icon, lv_color_black(), 0);
+	batt_fill = make_box(batt_icon, 3, 3, 0, BATT_H - 6);
+	set_inverted(batt_fill, true);
+	lv_obj_t *nub = make_box(list_view, BATT_X + BATT_W, 11, 3, BATT_H - 8);
+
+	set_inverted(nub, true);
+	lv_obj_add_flag(batt_icon, LV_OBJ_FLAG_HIDDEN);
+	lv_obj_add_flag(nub, LV_OBJ_FLAG_HIDDEN);
+	lv_obj_set_user_data(batt_icon, nub);
+
+	batt_text = make_label(list_view, FONT_SMALL);
+	lv_obj_set_pos(batt_text, BATT_X + BATT_W + 6, 6);
 
 	/* One box per satellite, inverted when it needs attention */
 	for (int sat = 0; sat < NUM_SATS; sat++) {
@@ -475,49 +578,88 @@ static void create_fault_view(lv_obj_t *scr)
 	lv_obj_align(fault_text, LV_ALIGN_CENTER, 0, 10);
 
 	title = make_label(fault_view, FONT_SMALL);
-	lv_label_set_text(title, "Press SAFE to acknowledge");
+	lv_label_set_text(title, "Press BACK to acknowledge");
 	lv_obj_align(title, LV_ALIGN_BOTTOM_MID, 0, -20);
 }
 
-static void create_settings_view(lv_obj_t *scr)
+static void create_padlist_view(lv_obj_t *scr)
 {
 	lv_obj_t *title;
 	lv_obj_t *help;
 
-	settings_view = make_box(scr, 0, 0, W, H);
-	set_inverted(settings_view, false);
+	padlist_view = make_box(scr, 0, 0, W, H);
+	set_inverted(padlist_view, false);
 
-	title = make_label(settings_view, FONT_MEDIUM);
+	title = make_label(padlist_view, FONT_MEDIUM);
 	lv_label_set_text(title, "SETTINGS  -  PADS");
 	lv_obj_set_pos(title, 8, 5);
 
-	/* Reached by turning above the first pad */
-	settings_sats_box = make_box(settings_view, W - 6 - 130, 3, 130, 21);
-	title = make_label(settings_sats_box, FONT_SMALL);
-	lv_label_set_text(title, "Satellites " LV_SYMBOL_RIGHT);
-	lv_obj_center(title);
-
-	make_rule(settings_view, 27);
+	make_rule(padlist_view, 27);
 
 	for (int p = 0; p < NUM_PADS; p++) {
-		settings_rows[p] = make_box(settings_view, 18, ROW_Y0 + p * ROW_H, W - 22,
+		padlist_rows[p] = make_box(padlist_view, 18, ROW_Y0 + p * ROW_H, W - 22,
 					    ROW_H - 2);
 		for (int c = 0; c < SCOL_COUNT; c++) {
-			settings_col[p][c] = make_label(settings_rows[p], FONT_SMALL);
-			lv_obj_align(settings_col[p][c], LV_ALIGN_LEFT_MID, settings_col_x[c], 0);
+			padlist_col[p][c] = make_label(padlist_rows[p], FONT_SMALL);
+			lv_obj_align(padlist_col[p][c], LV_ALIGN_LEFT_MID, padlist_col_x[c], 0);
 		}
-		lv_obj_set_width(settings_col[p][SCOL_LABEL], 60);
-		lv_label_set_long_mode(settings_col[p][SCOL_LABEL], LV_LABEL_LONG_MODE_CLIP);
+		lv_obj_set_width(padlist_col[p][SCOL_LABEL], 60);
+		lv_label_set_long_mode(padlist_col[p][SCOL_LABEL], LV_LABEL_LONG_MODE_CLIP);
 	}
 
-	settings_cursor = make_label(settings_view, FONT_SMALL);
-	lv_label_set_text(settings_cursor, LV_SYMBOL_RIGHT);
+	padlist_cursor = make_label(padlist_view, FONT_SMALL);
+	lv_label_set_text(padlist_cursor, LV_SYMBOL_RIGHT);
 
-	make_rule(settings_view, ROW_Y0 + NUM_PADS * ROW_H + 1);
+	make_rule(padlist_view, ROW_Y0 + NUM_PADS * ROW_H + 1);
 
-	help = make_label(settings_view, FONT_SMALL);
-	lv_label_set_text(help, "Turn: pad    Push: set up    SAFE: back");
+	help = make_label(padlist_view, FONT_SMALL);
+	lv_label_set_text(help, LV_SYMBOL_UP LV_SYMBOL_DOWN " pad    OK: set up    BACK: back");
 	lv_obj_set_pos(help, 8, ROW_Y0 + NUM_PADS * ROW_H + 9);
+}
+
+static void create_menu(lv_obj_t *scr, struct menu_ui *m, const char *title,
+			const char *const *names, int count)
+{
+	lv_obj_t *label;
+
+	m->view = make_box(scr, 0, 0, W, H);
+	set_inverted(m->view, false);
+	m->count = count;
+
+	label = make_label(m->view, FONT_MEDIUM);
+	lv_label_set_text(label, title);
+	lv_obj_set_pos(label, 8, 5);
+	make_rule(m->view, 27);
+
+	for (int i = 0; i < count; i++) {
+		m->row[i] = make_box(m->view, 18, MENU_Y0 + i * MENU_H, W - 36, MENU_H - 4);
+
+		label = make_label(m->row[i], FONT_MEDIUM);
+		lv_label_set_text(label, names[i]);
+		lv_obj_align(label, LV_ALIGN_LEFT_MID, 10, 0);
+
+		/* A line of state on the right */
+		m->detail[i] = make_label(m->row[i], FONT_SMALL);
+		lv_obj_align(m->detail[i], LV_ALIGN_RIGHT_MID, -10, 0);
+	}
+
+	m->cursor = make_label(m->view, FONT_SMALL);
+	lv_label_set_text(m->cursor, LV_SYMBOL_RIGHT);
+
+	make_rule(m->view, H - 30);
+
+	label = make_label(m->view, FONT_SMALL);
+	lv_label_set_text(label, LV_SYMBOL_UP LV_SYMBOL_DOWN " choose    OK: open    BACK: back");
+	lv_obj_set_pos(label, 8, H - 22);
+}
+
+static void refresh_menu(struct menu_ui *m, const struct menu_view *mv)
+{
+	for (int i = 0; i < m->count; i++) {
+		set_inverted(m->row[i], i == mv->cursor);
+		lv_obj_align(m->detail[i], LV_ALIGN_RIGHT_MID, -10, 0);
+	}
+	lv_obj_set_pos(m->cursor, 3, MENU_Y0 + mv->cursor * MENU_H + 5);
 }
 
 static void create_setup_view(lv_obj_t *scr)
@@ -605,7 +747,8 @@ static void create_sats_view(lv_obj_t *scr)
 	make_rule(sats_view, 206);
 
 	help = make_label(sats_view, FONT_SMALL);
-	lv_label_set_text(help, "Turn: satellite   Push: pair   Hold: forget   SAFE: back");
+	lv_label_set_text(help, LV_SYMBOL_UP LV_SYMBOL_DOWN " satellite   OK: pair   Hold OK: forget"
+			  "   BACK: back");
 	lv_obj_set_pos(help, 8, 214);
 }
 
@@ -657,6 +800,111 @@ static void create_pair_view(lv_obj_t *scr)
 	lv_obj_set_pos(pair_help, 8, H - 22);
 }
 
+static void create_battery_page(lv_obj_t *page)
+{
+	static const char *const names[BROW_COUNT] = {
+		"Charge", "Voltage", "To empty", "To full", "Power good", "Input power",
+		"Charger", "Health", "Fast charge", "Charge to", "Input limit",
+		"Input min.", "Precharge", "Termination",
+	};
+
+	for (int r = 0; r < BROW_COUNT; r++) {
+		int32_t x = r < BROW_PER_COL ? 8 : W / 2 + 6;
+		int32_t y = BROW_Y0 + (r % BROW_PER_COL) * BROW_H;
+		lv_obj_t *name = make_label(page, FONT_SMALL);
+
+		lv_label_set_text(name, names[r]);
+		lv_obj_set_pos(name, x, y);
+
+		/* Right-aligned at the column's end */
+		batt_value[r] = make_label(page, FONT_SMALL);
+		lv_obj_set_width(batt_value[r], 96);
+		lv_obj_set_style_text_align(batt_value[r], LV_TEXT_ALIGN_RIGHT, 0);
+		lv_obj_set_pos(batt_value[r], x + W / 2 - 14 - 96, y);
+	}
+	make_rule(page, BROW_Y0 + BROW_PER_COL * BROW_H + 2);
+}
+
+static void create_diag_view(lv_obj_t *scr)
+{
+	lv_obj_t *buttons;
+
+	diag_view = make_box(scr, 0, 0, W, H);
+	set_inverted(diag_view, false);
+
+	diag_title = make_label(diag_view, FONT_MEDIUM);
+	lv_obj_set_pos(diag_title, 8, 5);
+
+	diag_hint = make_label(diag_view, FONT_SMALL);
+
+	make_rule(diag_view, 27);
+
+	for (int i = 0; i < DIAG_COUNT; i++) {
+		diag_page[i] = make_box(diag_view, 0, 0, W, H);
+		lv_obj_set_style_bg_opa(diag_page[i], LV_OPA_TRANSP, 0);
+	}
+
+	buttons = diag_page[DIAG_BUTTONS];
+	for (int b = 0; b < BTN_COUNT; b++) {
+		diag_box[b] = make_box(buttons, 6 + (b % DIAG_COLS) * (DIAG_W + 4),
+				       DIAG_Y0 + (b / DIAG_COLS) * (DIAG_H + 4), DIAG_W, DIAG_H);
+		lv_obj_set_style_border_width(diag_box[b], 1, 0);
+		lv_obj_set_style_border_color(diag_box[b], lv_color_black(), 0);
+		diag_text[b] = make_label(diag_box[b], FONT_SMALL);
+		lv_obj_center(diag_text[b]);
+	}
+	if (!IS_ENABLED(CONFIG_APP_KEY_SWITCH)) {
+		lv_obj_add_flag(diag_box[BTN_KEY], LV_OBJ_FLAG_HIDDEN);
+	}
+
+	make_rule(buttons, DIAG_LOG_Y - 4);
+
+	for (int i = 0; i < INPUTS_LOG_LEN; i++) {
+		diag_log[i] = make_label(buttons, FONT_SMALL);
+		lv_obj_set_pos(diag_log[i], 8, DIAG_LOG_Y + i * 19);
+	}
+
+	create_battery_page(diag_page[DIAG_BATTERY]);
+}
+
+static void create_power_view(lv_obj_t *scr)
+{
+	lv_obj_t *label;
+
+	power_view = make_box(scr, 0, 0, W, H);
+	set_inverted(power_view, false);
+	lv_obj_set_style_border_width(power_view, 8, 0);
+	lv_obj_set_style_border_color(power_view, lv_color_black(), 0);
+
+	label = make_label(power_view, FONT_LARGE);
+	lv_label_set_text(label, "Switch off?");
+	lv_obj_align(label, LV_ALIGN_CENTER, 0, -20);
+
+	label = make_label(power_view, FONT_SMALL);
+	lv_label_set_text(label, "OK: switch off    BACK: cancel");
+	lv_obj_align(label, LV_ALIGN_BOTTOM_MID, 0, -20);
+}
+
+static void create_splash_view(lv_obj_t *scr)
+{
+	lv_obj_t *logo;
+
+	splash_view = make_box(scr, 0, 0, W, H);
+	set_inverted(splash_view, false);
+
+	/* A1 image: drawn in the recolor, opaque where the logo is */
+	logo = lv_image_create(splash_view);
+	lv_image_set_src(logo, &ui_logo);
+	lv_obj_set_style_image_recolor(logo, lv_color_black(), 0);
+	lv_obj_set_style_image_recolor_opa(logo, LV_OPA_COVER, 0);
+	lv_obj_align(logo, LV_ALIGN_CENTER, 0, -24);
+
+	splash_text = make_label(splash_view, FONT_SMALL);
+	lv_obj_set_width(splash_text, W - 16);
+	lv_obj_set_style_text_align(splash_text, LV_TEXT_ALIGN_CENTER, 0);
+	lv_obj_align(splash_text, LV_ALIGN_BOTTOM_MID, 0, -24);
+}
+
 void ui_init(void)
 {
 	lv_obj_t *scr = lv_screen_active();
@@ -668,11 +916,28 @@ void ui_init(void)
 	create_armed_view(scr);
 	create_launch_view(scr);
 	create_fault_view(scr);
-	create_settings_view(scr);
+	static const char *const settings_names[SETTINGS_COUNT] = {
+		[SETTINGS_PADS] = "Pads",
+		[SETTINGS_SATS] = "Satellites",
+		[SETTINGS_DIAG] = "Diagnostics",
+		[SETTINGS_OFF] = "Power off",
+	};
+	static const char *const diag_names[DIAG_COUNT] = {
+		[DIAG_BUTTONS] = "Buttons",
+		[DIAG_BATTERY] = "Battery",
+	};
+
+	create_menu(scr, &settings_menu, "SETTINGS", settings_names, SETTINGS_COUNT);
+	create_menu(scr, &diag_menu, "SETTINGS  -  DIAGNOSTICS", diag_names, DIAG_COUNT);
+	create_padlist_view(scr);
 	create_setup_view(scr);
 	create_sats_view(scr);
 	create_pair_view(scr);
+	create_diag_view(scr);
+	create_power_view(scr);
+	create_splash_view(scr);
 
+	splash_until = k_uptime_get() + SPLASH_MS;
 	ui_refresh();
 }
 
@@ -685,6 +950,39 @@ static void refresh_row(const struct ctrl_view *v, int slot, int p)
 	lv_label_set_text(r->name, pad_name(p));
 	lv_label_set_text(r->type, pads[p].type == PAD_HYBRID ? "HYB" : "RKT");
 	lv_label_set_text_fmt(r->sat, "%c", sat_name(pads[p].sat));
+}
+
+static void refresh_battery_icon(void)
+{
+	struct battery_info b;
+	lv_obj_t *nub = lv_obj_get_user_data(batt_icon);
+	bool charging;
+	bool low;
+
+	battery_get(&b);
+	if (!b.gauge) {
+		lv_obj_add_flag(batt_icon, LV_OBJ_FLAG_HIDDEN);
+		lv_obj_add_flag(nub, LV_OBJ_FLAG_HIDDEN);
+		lv_obj_add_flag(batt_bolt, LV_OBJ_FLAG_HIDDEN);
+		lv_label_set_text(batt_text, "");
+		return;
+	}
+	charging = battery_charging(&b);
+	low = b.soc_pct <= 15 && !charging;
+
+	lv_obj_remove_flag(batt_icon, LV_OBJ_FLAG_HIDDEN);
+	lv_obj_remove_flag(nub, LV_OBJ_FLAG_HIDDEN);
+	lv_obj_set_width(batt_fill, (BATT_W - 6) * b.soc_pct / 100);
+	if (charging) {
+		lv_obj_remove_flag(batt_bolt, LV_OBJ_FLAG_HIDDEN);
+	} else {
+		lv_obj_add_flag(batt_bolt, LV_OBJ_FLAG_HIDDEN);
+	}
+	/* Low: the percentage turns white on black */
+	lv_label_set_text_fmt(batt_text, low ? " %u%% " : "%u%%", b.soc_pct);
+	lv_obj_set_style_bg_opa(batt_text, low ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+	lv_obj_set_style_bg_color(batt_text, lv_color_black(), 0);
+	lv_obj_set_style_text_color(batt_text, fg(low), 0);
 }
 
 static void refresh_list_view(const struct ctrl_view *v, int64_t now)
@@ -718,6 +1016,7 @@ static void refresh_list_view(const struct ctrl_view *v, int64_t now)
 
 	lv_label_set_text(state_label, any_visible || v->state != CTRL_SAFE
 				       ? ctrl_state_name(v->state) : "NO LINK");
+	refresh_battery_icon();
 
 	/* Only pads that can be used right now, packed from the top */
 	int slot = 0;
@@ -745,11 +1044,11 @@ static void refresh_list_view(const struct ctrl_view *v, int64_t now)
 	} else if (v->state == CTRL_ARMING) {
 		lv_label_set_text(footer_label, "Arming...");
 	} else if (!any_paired) {
-		lv_label_set_text(footer_label, "No satellites paired. Hold select for settings.");
+		lv_label_set_text(footer_label, "No satellites paired. Hold OK for settings.");
 	} else if (!any_visible) {
 		lv_label_set_text(footer_label, "No satellites connected");
 	} else if (lv_obj_has_flag(cursor_label, LV_OBJ_FLAG_HIDDEN)) {
-		lv_label_set_text(footer_label, "No pads available. Hold select for settings.");
+		lv_label_set_text(footer_label, "No pads available. Hold OK for settings.");
 	} else if (v->arm_block) {
 		lv_label_set_text(footer_label, v->arm_block);
 	} else if (v->channel_crowded && v->other_nets) {
@@ -891,13 +1190,13 @@ static void refresh_armed_view(const struct ctrl_view *v, int64_t now)
 	}
 
 	if (v->launch_block) {
-		lv_label_set_text_fmt(armed_hint, LV_SYMBOL_WARNING " %s  -  SAFE aborts",
+		lv_label_set_text_fmt(armed_hint, LV_SYMBOL_WARNING " %s  -  BACK disarms",
 				      v->launch_block);
 	} else if (v->arm_timer_paused) {
-		lv_label_set_text(armed_hint, "Arm timer paused while filling  -  SAFE aborts");
+		lv_label_set_text(armed_hint, "Arm timer paused while filling  -  BACK disarms");
 	} else {
-		lv_label_set_text(armed_hint, hybrid ? "FILL  /  VENT  /  hold LAUNCH  -  SAFE aborts"
-						     : "Hold FIRE to launch  -  SAFE aborts");
+		lv_label_set_text(armed_hint, hybrid ? "FILL  /  VENT  /  hold FIRE  -  BACK disarms"
+						     : "Hold FIRE to launch  -  BACK disarms");
 	}
 	lv_obj_remove_flag(fire_bar, LV_OBJ_FLAG_HIDDEN);
 	lv_bar_set_value(fire_bar, v->fire_hold_ms, LV_ANIM_OFF);
@@ -985,11 +1284,11 @@ static void refresh_launch_view(const struct ctrl_view *v, int64_t now)
 	}
 }
 
-static void refresh_settings_view(const struct ctrl_view *v)
+static void refresh_padlist_view(const struct ctrl_view *v)
 {
 	for (int p = 0; p < NUM_PADS; p++) {
 		const struct pad_cfg *cfg = &pads[p];
-		lv_obj_t **col = settings_col[p];
+		lv_obj_t **col = padlist_col[p];
 
 		lv_label_set_text_fmt(col[SCOL_NUM], "%d", p + 1);
 		lv_label_set_text(col[SCOL_LABEL], cfg->label[0] ? cfg->label : "-");
@@ -1011,13 +1310,39 @@ static void refresh_settings_view(const struct ctrl_view *v)
 			break;
 		}
 	}
-	set_inverted(settings_sats_box, v->settings.cursor == SETTINGS_SATS);
-	if (v->settings.cursor == SETTINGS_SATS) {
-		lv_obj_add_flag(settings_cursor, LV_OBJ_FLAG_HIDDEN);
-	} else {
-		lv_obj_remove_flag(settings_cursor, LV_OBJ_FLAG_HIDDEN);
-		lv_obj_set_pos(settings_cursor, 3, ROW_Y0 + v->settings.cursor * ROW_H + 3);
+	lv_obj_set_pos(padlist_cursor, 3, ROW_Y0 + v->pad_list.cursor * ROW_H + 3);
+}
+
+static void refresh_settings_menu(const struct ctrl_view *v)
+{
+	int used = 0;
+	int paired = 0;
+
+	for (int p = 0; p < NUM_PADS; p++) {
+		used += pads[p].type != PAD_OFF;
 	}
+	for (int sat = 0; sat < NUM_SATS; sat++) {
+		paired += v->sat[sat].uid != 0;
+	}
+	lv_label_set_text_fmt(settings_menu.detail[SETTINGS_PADS], "%d of %d in use", used,
+			      NUM_PADS);
+	lv_label_set_text_fmt(settings_menu.detail[SETTINGS_SATS], "%d of %d paired", paired,
+			      NUM_SATS);
+	refresh_menu(&settings_menu, &v->settings);
+}
+
+static void refresh_diag_menu(const struct ctrl_view *v)
+{
+	struct battery_info b;
+
+	battery_get(&b);
+	if (b.gauge) {
+		lv_label_set_text_fmt(diag_menu.detail[DIAG_BATTERY], "%u %%%s", b.soc_pct,
+				      battery_charging(&b) ? ", charging" : "");
+	} else {
+		lv_label_set_text(diag_menu.detail[DIAG_BATTERY], "no reading");
+	}
+	refresh_menu(&diag_menu, &v->diag_menu);
 }
 
 /* 16 hex digits; LVGL's formatter is not trusted with 64-bit values */
@@ -1108,23 +1433,23 @@ static void refresh_pair_view(const struct ctrl_view *v)
 					      "status LED blinking fast."
 					    : "Hold the pairing button on the satellite for 5 s. "
 					      "Looking for it...");
-		lv_label_set_text(pair_help, "Turn: choose   Push: pair   SAFE: cancel");
+		lv_label_set_text(pair_help, LV_SYMBOL_UP LV_SYMBOL_DOWN " choose   OK: pair   BACK: cancel");
 		break;
 	case PAIR_WAIT:
 		uid_text(buf, sizeof(buf), pv->uid[pv->cursor]);
 		lv_label_set_text_fmt(pair_text, "Exchanging keys with %s...", buf);
-		lv_label_set_text(pair_help, "SAFE: cancel");
+		lv_label_set_text(pair_help, "BACK: cancel");
 		break;
 	case PAIR_COMPARE:
 		lv_label_set_text(pair_text, "The satellite's channel LEDs show these rows in "
 					     "turn, row 1 with the status LED lit.\n\n"
 					     "Do they match?");
-		lv_label_set_text(pair_help, "Push: they match   SAFE: they differ");
+		lv_label_set_text(pair_help, "OK: they match   BACK: they differ");
 		break;
 	case PAIR_CONFIRMED:
 		lv_label_set_text(pair_text, "Now press the button on the satellite.\n\n"
 					     "If its LEDs differ, hold it instead.");
-		lv_label_set_text(pair_help, "SAFE: cancel");
+		lv_label_set_text(pair_help, "BACK: cancel");
 		break;
 	}
 }
@@ -1156,9 +1481,10 @@ static void setup_field_text(const struct pad_cfg *cfg, int field, char *buf, si
 static void refresh_setup_view(const struct ctrl_view *v)
 {
 	static const char *const help[] = {
-		[SETUP_FIELDS] = "Turn: field  Push: change  Hold: save  SAFE: cancel",
-		[SETUP_VALUE] = "Turn: change value   Push: done   SAFE: undo",
-		[SETUP_LABEL] = "Turn: letter   Push: next   Hold: done   SAFE: undo",
+		[SETUP_FIELDS] = LV_SYMBOL_UP LV_SYMBOL_DOWN " field  " LV_SYMBOL_LEFT LV_SYMBOL_RIGHT
+				 " value  Hold OK: save  BACK: cancel",
+		[SETUP_LABEL] = LV_SYMBOL_UP LV_SYMBOL_DOWN " letter  " LV_SYMBOL_LEFT LV_SYMBOL_RIGHT
+				" position  OK: done  BACK: undo",
 	};
 	const struct pad_setup *su = &v->setup;
 	const struct pad_cfg *cfg = &su->cfg;
@@ -1180,8 +1506,8 @@ static void refresh_setup_view(const struct ctrl_view *v)
 		set_inverted(setup_row[f], f == su->field && !editing_label);
 
 		setup_field_text(cfg, f, buf, sizeof(buf));
-		if (f == su->field && su->mode == SETUP_VALUE) {
-			/* Arrows show that turning now changes the value */
+		if (f == su->field && f != FIELD_LABEL && !editing_label) {
+			/* Arrows show that left and right change the value */
 			lv_label_set_text_fmt(setup_value[f], LV_SYMBOL_LEFT "  %s  " LV_SYMBOL_RIGHT,
 					      buf);
 		} else {
@@ -1215,6 +1541,94 @@ static void refresh_setup_view(const struct ctrl_view *v)
 	}
 }
 
+static void minutes_text(char *buf, size_t len, uint32_t min)
+{
+	if (min == 0) {
+		snprintf(buf, len, "-");
+	} else {
+		snprintf(buf, len, "%u h %02u min", min / 60, min % 60);
+	}
+}
+
+static void refresh_battery_page(void)
+{
+	struct battery_info b;
+	char buf[BROW_COUNT][24];
+
+	battery_get(&b);
+	for (int r = 0; r < BROW_COUNT; r++) {
+		snprintf(buf[r], sizeof(buf[r]), "-");
+	}
+	if (b.gauge) {
+		snprintf(buf[BROW_SOC], 24, "%u %%", b.soc_pct);
+		snprintf(buf[BROW_VOLTAGE], 24, "%u.%03u V", b.voltage_mv / 1000, b.voltage_mv % 1000);
+		minutes_text(buf[BROW_TO_EMPTY], 24, b.to_empty_min);
+		minutes_text(buf[BROW_TO_FULL], 24, b.to_full_min);
+	}
+	if (b.pgood >= 0) {
+		snprintf(buf[BROW_PGOOD], 24, "%s", b.pgood ? "yes" : "no");
+	}
+	if (b.charger) {
+		snprintf(buf[BROW_INPUT], 24, "%s", b.online ? "yes" : "no");
+		snprintf(buf[BROW_STATUS], 24, "%s", battery_status_text(b.status));
+		snprintf(buf[BROW_HEALTH], 24, "%s", battery_health_text(b.health));
+		snprintf(buf[BROW_ICHG], 24, "%u mA", b.ichg_ma);
+		snprintf(buf[BROW_VREG], 24, "%u.%03u V", b.vreg_mv / 1000, b.vreg_mv % 1000);
+		snprintf(buf[BROW_IINLIM], 24, "%u mA", b.iinlim_ma);
+		snprintf(buf[BROW_VINDPM], 24, "%u.%02u V", b.vindpm_mv / 1000,
+			 (b.vindpm_mv % 1000) / 10);
+		snprintf(buf[BROW_IPRECHG], 24, "%u mA", b.iprechg_ma);
+		snprintf(buf[BROW_ITERM], 24, "%u mA", b.iterm_ma);
+	}
+	for (int r = 0; r < BROW_COUNT; r++) {
+		lv_label_set_text(batt_value[r], buf[r]);
+	}
+}
+
+static void refresh_diag_view(const struct ctrl_view *v)
+{
+	struct inputs_diag d;
+
+	for (int i = 0; i < DIAG_COUNT; i++) {
+		if (i == v->diag) {
+			lv_obj_remove_flag(diag_page[i], LV_OBJ_FLAG_HIDDEN);
+		} else {
+			lv_obj_add_flag(diag_page[i], LV_OBJ_FLAG_HIDDEN);
+		}
+	}
+	if (v->diag == DIAG_BATTERY) {
+		lv_label_set_text(diag_title, "BATTERY");
+		lv_label_set_text(diag_hint, "BACK: back");
+		lv_obj_align(diag_hint, LV_ALIGN_TOP_RIGHT, -8, 7);
+		refresh_battery_page();
+		return;
+	}
+	lv_label_set_text(diag_title, "BUTTONS");
+	lv_label_set_text(diag_hint, "Hold BACK to leave");
+	lv_obj_align(diag_hint, LV_ALIGN_TOP_RIGHT, -8, 7);
+
+	inputs_diag(&d);
+	for (int b = 0; b < BTN_COUNT; b++) {
+		set_inverted(diag_box[b], d.pressed & BIT(b));
+		lv_label_set_text_fmt(diag_text[b], "%s  %u", button_name(b), d.count[b]);
+	}
+	for (int i = 0; i < INPUTS_LOG_LEN; i++) {
+		const struct button_event *ev = &d.log[i];
+		int32_t ms = (int32_t)(ev->time % 1000);
+		int32_t s = (int32_t)(ev->time / 1000);
+
+		if (i >= d.n_log) {
+			lv_label_set_text(diag_log[i], "");
+		} else if (ev->pressed) {
+			lv_label_set_text_fmt(diag_log[i], "%d.%03d s   %s pressed", s, ms,
+					      button_name(ev->button));
+		} else {
+			lv_label_set_text_fmt(diag_log[i], "%d.%03d s   %s released after %d ms", s,
+					      ms, button_name(ev->button), ev->held_ms);
+		}
+	}
+}
+
 void ui_refresh(void)
 {
 	const struct ctrl_view *v = ctrl_view();
@@ -1227,7 +1641,17 @@ void ui_refresh(void)
 	}
 	launch_start = -1;   /* the next launch starts the animation over */
 
-	if (v->state == CTRL_ARMED) {
+	if (v->powering_off) {
+		lv_label_set_text(splash_text, inputs_pressed(BTN_POWER)
+						       ? "Switching off - release the power button"
+						       : "Switching off...");
+		show_only(splash_view);
+	} else if (now < splash_until) {
+		lv_label_set_text(splash_text, "Starting...");
+		show_only(splash_view);
+	} else if (v->power_confirm) {
+		show_only(power_view);
+	} else if (v->state == CTRL_ARMED) {
 		refresh_armed_view(v, now);
 		show_only(armed_view);
 	} else if (v->fault_active) {
@@ -1239,12 +1663,21 @@ void ui_refresh(void)
 	} else if (v->sats.active) {
 		refresh_sats_view(v, now);
 		show_only(sats_view);
+	} else if (v->diag != DIAG_NONE) {
+		refresh_diag_view(v);
+		show_only(diag_view);
 	} else if (v->setup.active) {
 		refresh_setup_view(v);
 		show_only(setup_view);
+	} else if (v->pad_list.active) {
+		refresh_padlist_view(v);
+		show_only(padlist_view);
+	} else if (v->diag_menu.active) {
+		refresh_diag_menu(v);
+		show_only(diag_menu.view);
 	} else if (v->settings.active) {
-		refresh_settings_view(v);
-		show_only(settings_view);
+		refresh_settings_menu(v);
+		show_only(settings_menu.view);
 	} else {
 		refresh_list_view(v, now);
 		show_only(list_view);

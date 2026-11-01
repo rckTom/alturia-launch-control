@@ -1,6 +1,10 @@
 """Build the photoreal Blender scene of the controller assembly.
 
     blender -b --factory-startup --python build_scene.py [-- --render [names]]
+        [--eevee] [--scale=50] [--samples=64]
+
+--eevee renders with EEVEE on the GPU instead of Cycles on the CPU: much
+faster; the acrylic window is shaded as thin glass without refraction.
 
 Inputs, all in this directory:
   assembly.glb   ControllerAssembly.FCStd (export_glb.py); sometimes without
@@ -15,6 +19,7 @@ render_<camera>.png. Blender units are metres (glTF), 1 mm = 0.001.
 
 import math
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -29,13 +34,12 @@ MM = 0.001
 PCB_AT = Vector((26.4609, 80.46, 4.90679)) * MM
 # PCB outline in assembly coordinates (mm): parts outside are unplaced
 BOARD = (-38.54, -75.54, 26.46, 80.46)
-# FrontCase Body placement and its flat top face (z = 13 in the body)
-FRONT_AT = Vector((-6.03913, 2.96004, 2.21679 + 13.0)) * MM
+# Centre of the FrontCase flat top face; z is read from the geometry below
+FRONT_AT = Vector((-6.03913, 2.96004, 0)) * MM
 FACE_W, FACE_H = 69.92, 158.92
-# Display active area (LS027B7DH01, 58.8 x 35.28 mm) on the glass, z = 12.29
-SCREEN_C = Vector((-6.04, 45.2, 12.30)) * MM
+# Display active area (LS027B7DH01, 58.8 x 35.28 mm) on the glass; z below
+SCREEN_C = Vector((-6.04, 45.2, 0)) * MM
 SCREEN_W, SCREEN_H = 58.8, 35.28
-CASE_BOTTOM = -6.78 * MM
 
 # ---- scene ----------------------------------------------------------------
 
@@ -53,12 +57,22 @@ def import_glb(path):
     return [o for o in bpy.data.objects if o not in before]
 
 
+# KiCad StepUp names the board "<board>_PCB" and its copper "<board>_pad",
+# and the board name follows whatever file KiCad exported from
+def is_board(o):
+    return re.search(r"_PCB(\.\d+)?$", o.name) is not None
+
+
+def is_pads(o):
+    return re.search(r"_pad(\.\d+)?$", o.name) is not None
+
+
 asm = import_glb(HERE / "assembly.glb")
 for o in asm:
     if o.parent is None:
         o.parent = root
 
-pcb_link = next((o for o in asm if o.name.startswith("controller_PCB")), None)
+pcb_link = next((o for o in asm if is_board(o)), None)
 if pcb_link is not None:
     # this export kept the PCB link: everything under the link's node
     while pcb_link.parent is not None and pcb_link.parent.name != "Assembly":
@@ -85,7 +99,7 @@ def on_board(p):
 for o in pcb:
     if o.type != 'MESH':
         continue
-    if o.name.startswith("controller_pad"):
+    if is_pads(o):
         bm = bmesh.new()
         bm.from_mesh(o.data)
         mw = o.matrix_world
@@ -98,6 +112,20 @@ for o in pcb:
     c = sum((o.matrix_world @ Vector(b) for b in o.bound_box), Vector()) / 8
     if not on_board(c):
         bpy.data.objects.remove(o)
+
+
+def z_range(o):
+    z = [(o.matrix_world @ Vector(b)).z for b in o.bound_box]
+    return min(z), max(z)
+
+
+# Heights follow the assembly: the flat top face is the front case's highest
+# point, the screen 0.1 mm over the display glass (closer z-fights in EEVEE),
+# the floor under the back.
+FRONT_AT.z = z_range(bpy.data.objects["Body"])[1]
+SCREEN_C.z = z_range(next(o for o in bpy.data.objects if o.type == 'MESH'
+                          and o.name.startswith("Open CASCADE STEP translator")))[1] + 0.1 * MM
+CASE_BOTTOM = z_range(bpy.data.objects["Body003"])[0]
 
 # ---- materials --------------------------------------------------------------
 
@@ -260,6 +288,8 @@ for o in list(bpy.data.objects):
         assign(o, M["back"])
     elif n == "Body002":
         assign(o, M["acrylic"])
+    elif n in ("Body004", "Body005"):   # keypad membrane and retainer
+        assign(o, M["rubber"])
     elif n == "Body001":
         assign(o, M["gold"])
     elif n.startswith(("Housing", "Nut")):
@@ -281,9 +311,9 @@ for o in list(bpy.data.objects):
         assign(o, M["inlay"])
     elif n.startswith("Open CASCADE STEP translator"):   # Sharp display
         assign(o, M["lcd_frame"])
-    elif n.startswith("controller_pad"):
+    elif is_pads(o):
         assign(o, M["enig"])
-    elif n.startswith("controller_PCB"):
+    elif is_board(o):
         assign(o, M["mask"])
     # other PCB parts keep their KiCad colours
     if o.data.polygons:
@@ -344,7 +374,9 @@ def area_light(name, loc, target, power, size, color=(1, 1, 1)):
     return lo
 
 
-CENTER = Vector((-6, 3, 4)) * MM
+# mid-height of the case; camera heights are relative to the case
+MID_Z = (CASE_BOTTOM + FRONT_AT.z) / 2
+CENTER = Vector((-6 * MM, 3 * MM, MID_Z))
 area_light("Key", (-0.35, -0.25, 0.45), CENTER, 14, 0.45, (1.0, 0.97, 0.93))
 area_light("Fill", (0.4, -0.3, 0.2), CENTER, 3, 0.6, (0.92, 0.95, 1.0))
 area_light("Rim", (0.15, 0.45, 0.25), CENTER, 10, 0.25)
@@ -376,20 +408,58 @@ CAMS = {
     "front": (camera("front", (0, -0.05, 1), 0.62, 100, target=CENTER + Vector((0, 0, 0))),
               (1400, 2200)),
     "detail": (camera("detail", (0.18, -0.78, 0.5), 0.21, 100,
-                      target=Vector((-4, -52, 12)) * MM,
-                      focus=Vector((12.7, -66, 15.5)) * MM, fstop=5.6), (2400, 1600)),
+                      target=Vector((-4 * MM, -52 * MM, FRONT_AT.z - 3.2 * MM)),
+                      focus=Vector((12.7 * MM, -66 * MM, FRONT_AT.z + 0.3 * MM)), fstop=5.6), (2400, 1600)),
     "top": (camera("top", (-0.55, 0.62, 0.5), 0.36, 85,
-                   target=Vector((-6, 50, 4)) * MM, fstop=8), (2400, 1600)),
+                   target=Vector((-6 * MM, 50 * MM, MID_Z)), fstop=8), (2400, 1600)),
 }
 
-scene.render.engine = 'CYCLES'
-scene.cycles.device = 'CPU'
+argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+EEVEE = "--eevee" in argv
+
 # leave one core free for FreeCAD; saved in the .blend too
 scene.render.threads_mode = 'FIXED'
 scene.render.threads = max(1, os.cpu_count() - 1)
+scene.cycles.device = 'CPU'
 scene.cycles.samples = 256
 scene.cycles.use_denoising = True
 scene.cycles.denoiser = 'OPENIMAGEDENOISE'
+if EEVEE:
+    scene.render.engine = 'BLENDER_EEVEE'
+    ee = scene.eevee
+    ee.taa_render_samples = 128
+    ee.use_raytracing = True            # reflections
+    ee.ray_tracing_options.resolution_scale = '1'
+    ee.use_shadows = True
+    ee.shadow_ray_count = 3
+    ee.shadow_step_count = 12
+    ee.use_fast_gi = True
+    # EEVEE's screen-space refraction ghosts the screen behind the 1 mm
+    # window, which barely refracts anyway: shade it as thin glass instead
+    nt = M["acrylic"].node_tree
+    fres = nt.nodes.new("ShaderNodeFresnel")
+    fres.inputs["IOR"].default_value = 1.49
+    clear = nt.nodes.new("ShaderNodeBsdfTransparent")
+    gloss = nt.nodes.new("ShaderNodeBsdfGlossy")
+    gloss.inputs["Roughness"].default_value = 0.02
+    # gloss on the top face only: seen from inside, the bottom face would
+    # be all total internal reflection, a black mirror of the case interior
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+    front = nt.nodes.new("ShaderNodeMath")
+    front.operation = 'SUBTRACT'
+    front.inputs[0].default_value = 1.0
+    nt.links.new(geo.outputs["Backfacing"], front.inputs[1])
+    fac = nt.nodes.new("ShaderNodeMath")
+    fac.operation = 'MULTIPLY'
+    nt.links.new(fres.outputs[0], fac.inputs[0])
+    nt.links.new(front.outputs[0], fac.inputs[1])
+    mix = nt.nodes.new("ShaderNodeMixShader")
+    nt.links.new(fac.outputs[0], mix.inputs[0])
+    nt.links.new(clear.outputs[0], mix.inputs[1])
+    nt.links.new(gloss.outputs[0], mix.inputs[2])
+    nt.links.new(mix.outputs[0], nt.nodes["Material Output"].inputs["Surface"])
+else:
+    scene.render.engine = 'CYCLES'
 scene.view_settings.view_transform = 'AgX'
 scene.view_settings.look = 'AgX - Medium High Contrast'
 scene.render.film_transparent = False
@@ -398,7 +468,6 @@ scene.render.resolution_x, scene.render.resolution_y = CAMS["hero"][1]
 
 bpy.ops.wm.save_as_mainfile(filepath=str(HERE / "controller.blend"), compress=True)
 
-argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 if "--render" in argv:
     names = [a for a in argv if not a.startswith("--")] or list(CAMS)
     for k in argv:
@@ -406,6 +475,7 @@ if "--render" in argv:
             scene.render.resolution_percentage = int(k.split("=")[1])
         if k.startswith("--samples="):
             scene.cycles.samples = int(k.split("=")[1])
+            scene.eevee.taa_render_samples = int(k.split("=")[1])
     for n in names:
         cam, (rx, ry) = CAMS[n]
         scene.camera = cam

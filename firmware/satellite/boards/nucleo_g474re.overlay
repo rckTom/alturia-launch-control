@@ -48,16 +48,6 @@ zephyr_udc0: &usb {
 	};
 };
 
-/* Fire-rail current monitor across the 2 mOhm shunt. */
-&i2c1 {
-	rail_monitor: ina226@40 {
-		compatible = "ti,ina226";
-		reg = <0x40>;
-		current-lsb-microamps = <1250>;
-		rshunt-micro-ohms = <2000>;
-	};
-};
-
 /* Pyro channel control lines. On the satellite these are G474 GPIOs driving
  * the TPS1HB08 enables and the low-side gates directly; gpio-leds is a
  * stand-in compatible so they can be fetched with GPIO_DT_SPEC_GET.

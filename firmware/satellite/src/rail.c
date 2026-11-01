@@ -9,59 +9,91 @@
 
 LOG_MODULE_REGISTER(rail, LOG_LEVEL_INF);
 
-/* INA226 across the 2 mOhm shunt between the arm relay and the fire rail.
- * A few mA of unexpected current with no channel firing means a leaking
- * output, which is the fault this monitor exists to catch.
+/* The rail voltages the board can measure: voltage-divider sensors on the
+ * MCP3208 and VDDA from the STM32's VREFINT, where the devicetree has them.
  */
-#if DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(rail_monitor))
+#define RAIL_SENSE(label, rail_name)                                                   \
+	IF_ENABLED(DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(label)),                        \
+		   ({.name = rail_name, .dev = DEVICE_DT_GET(DT_NODELABEL(label))},))
 
-static const struct device *const monitor = DEVICE_DT_GET(DT_NODELABEL(rail_monitor));
+static const struct {
+	const char *name;
+	const struct device *dev;
+} rails[] = {
+	RAIL_SENSE(vbat_sense, "VBAT_FUSED")
+	RAIL_SENSE(vpyro_sense, "V_PYRO_ARMED")
+	RAIL_SENSE(vref, "+3V3 (VDDA)")
+};
 
-int rail_init(void)
+size_t rails_count(void)
 {
-	return device_is_ready(monitor) ? 0 : -ENODEV;
+	return ARRAY_SIZE(rails);
 }
 
-int rail_read(int32_t *mv, int32_t *ma)
+int rails_read(size_t i, const char **name, int32_t *mv)
 {
-	struct sensor_value voltage;
-	struct sensor_value current;
+	struct sensor_value v;
 	int ret;
 
-	ret = sensor_sample_fetch(monitor);
+	if (i >= ARRAY_SIZE(rails)) {
+		return -ENOENT;
+	}
+
+	*name = rails[i].name;
+	if (!device_is_ready(rails[i].dev)) {
+		return -ENODEV;
+	}
+
+	ret = sensor_sample_fetch_chan(rails[i].dev, SENSOR_CHAN_VOLTAGE);
 	if (ret) {
 		return ret;
 	}
 
-	ret = sensor_channel_get(monitor, SENSOR_CHAN_VOLTAGE, &voltage);
+	ret = sensor_channel_get(rails[i].dev, SENSOR_CHAN_VOLTAGE, &v);
 	if (ret) {
 		return ret;
 	}
 
-	ret = sensor_channel_get(monitor, SENSOR_CHAN_CURRENT, &current);
-	if (ret) {
-		return ret;
-	}
-
-	*mv = voltage.val1 * 1000 + voltage.val2 / 1000;
-	*ma = current.val1 * 1000 + current.val2 / 1000;
-
+	*mv = (int32_t)sensor_value_to_milli(&v);
 	return 0;
 }
 
-#else /* No INA226 (native_sim): a charged, quiet rail. */
+#if DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(vbat_sense))
 
-int rail_init(void)
+int rail_vbat_mv(int32_t *mv)
 {
-	LOG_WRN("no rail monitor, reading a quiet rail");
-	return 0;
+	const struct device *const dev = DEVICE_DT_GET(DT_NODELABEL(vbat_sense));
+	struct sensor_value v;
+	int ret;
+
+	if (!device_is_ready(dev)) {
+		return -ENODEV;
+	}
+
+	ret = sensor_sample_fetch_chan(dev, SENSOR_CHAN_VOLTAGE);
+	if (!ret) {
+		ret = sensor_channel_get(dev, SENSOR_CHAN_VOLTAGE, &v);
+	}
+	if (!ret) {
+		*mv = (int32_t)sensor_value_to_milli(&v);
+	}
+	return ret;
 }
 
-int rail_read(int32_t *mv, int32_t *ma)
+#elif defined(CONFIG_BOARD_NATIVE_SIM)
+
+/* The radio network simulator's satellites run on a charged pack. */
+int rail_vbat_mv(int32_t *mv)
 {
 	*mv = 12000;
-	*ma = 0;
 	return 0;
+}
+
+#else
+
+int rail_vbat_mv(int32_t *mv)
+{
+	return -ENOTSUP;
 }
 
 #endif

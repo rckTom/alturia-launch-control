@@ -2185,7 +2185,7 @@
 		(in_bom no)
 		(on_board yes)
 		(in_pos_files yes)
-		(dnp no)
+		(dnp yes)
 		(fields_autoplaced yes)
 		(uuid "63c5dc51-a0a2-4250-993b-4fa412e33e88")
 		(property "Reference" "H4"
@@ -2261,7 +2261,7 @@
 		(in_bom no)
 		(on_board yes)
 		(in_pos_files yes)
-		(dnp no)
+		(dnp yes)
 		(fields_autoplaced yes)
 		(uuid "68c047ee-47f9-45c1-a576-747399a91132")
 		(property "Reference" "H5"
@@ -2439,7 +2439,7 @@
 		(in_bom no)
 		(on_board yes)
 		(in_pos_files yes)
-		(dnp no)
+		(dnp yes)
 		(fields_autoplaced yes)
 		(uuid "95c7366a-4fba-4cb2-abab-55b187e78aeb")
 		(property "Reference" "H7"
@@ -2515,7 +2515,7 @@
 		(in_bom no)
 		(on_board yes)
 		(in_pos_files yes)
-		(dnp no)
+		(dnp yes)
 		(fields_autoplaced yes)
 		(uuid "a6187a53-a800-4610-8de1-0974e9de5cd8")
 		(property "Reference" "H3"
@@ -2839,7 +2839,7 @@
 		(in_bom no)
 		(on_board yes)
 		(in_pos_files yes)
-		(dnp no)
+		(dnp yes)
 		(fields_autoplaced yes)
 		(uuid "b3e346b3-a1d6-45ab-bce7-0323f9275e30")
 		(property "Reference" "H1"
@@ -2915,7 +2915,7 @@
 		(in_bom no)
 		(on_board yes)
 		(in_pos_files yes)
-		(dnp no)
+		(dnp yes)
 		(fields_autoplaced yes)
 		(uuid "b747be1d-492f-466d-8f1e-d611eb928edf")
 		(property "Reference" "H8"
@@ -3175,7 +3175,7 @@
 		(in_bom no)
 		(on_board yes)
 		(in_pos_files yes)
-		(dnp no)
+		(dnp yes)
 		(fields_autoplaced yes)
 		(uuid "d0ca7248-54ae-4af6-8176-6da732c586f0")
 		(property "Reference" "H2"
@@ -3251,7 +3251,7 @@
 		(in_bom no)
 		(on_board yes)
 		(in_pos_files yes)
-		(dnp no)
+		(dnp yes)
 		(fields_autoplaced yes)
 		(uuid "d4f3ee8d-10df-40d5-a2c6-dc7f2bbf3d89")
 		(property "Reference" "H9"
@@ -3327,7 +3327,7 @@
 		(in_bom no)
 		(on_board yes)
 		(in_pos_files yes)
-		(dnp no)
+		(dnp yes)
 		(fields_autoplaced yes)
 		(uuid "db475603-10f3-4925-8028-8a441fd4dd29")
 		(property "Reference" "H6"
@@ -3403,7 +3403,7 @@
 		(in_bom no)
 		(on_board yes)
 		(in_pos_files yes)
-		(dnp no)
+		(dnp yes)
 		(fields_autoplaced yes)
 		(uuid "e1670530-901f-421f-bdc6-6e885adff68a")
 		(property "Reference" "H10"
@@ -3669,7 +3669,7 @@
 		(in_bom no)
 		(on_board yes)
 		(in_pos_files yes)
-		(dnp no)
+		(dnp yes)
 		(fields_autoplaced yes)
 		(uuid "f74dc735-34c0-4dcb-9b28-881b3eb33508")
 		(property "Reference" "H11"

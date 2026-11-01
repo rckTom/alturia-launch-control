@@ -1,0 +1,50 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+
+#include <zephyr/dt-bindings/pinctrl/esp32s3-pinctrl.h>
+
+&pinctrl {
+	/* Wio-SX1262 on the FSPI IO_MUX pins */
+	spim2_default: spim2_default {
+		group1 {
+			pinmux = <SPIM2_MISO_GPIO13>,
+				 <SPIM2_SCLK_GPIO12>;
+		};
+
+		group2 {
+			pinmux = <SPIM2_MOSI_GPIO11>;
+			output-low;
+		};
+	};
+
+	/* Sharp Memory LCD on the UART0 pins (TXD0 = SCK, RXD0 = MOSI).
+	 * Write-only, so no MISO; CS is active high and a plain GPIO.
+	 */
+	spim3_default: spim3_default {
+		group1 {
+			pinmux = <SPIM3_SCLK_GPIO43>;
+		};
+
+		group2 {
+			pinmux = <SPIM3_MOSI_GPIO44>;
+			output-low;
+		};
+	};
+
+	/* BQ24296M charger and MAX17048 gauge, 4.7k pull-ups on board */
+	i2c0_default: i2c0_default {
+		group1 {
+			pinmux = <I2C0_SDA_GPIO38>,
+				 <I2C0_SCL_GPIO39>;
+			drive-open-drain;
+			output-high;
+		};
+	};
+
+	/* Passive magnetic buzzer BZ401 through Q401 */
+	ledc0_default: ledc0_default {
+		group1 {
+			pinmux = <LEDC_CH0_GPIO46>;
+			output-enable;
+		};
+	};
+};

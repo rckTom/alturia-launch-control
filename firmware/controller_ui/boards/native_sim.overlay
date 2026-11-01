@@ -3,14 +3,14 @@
  * in an SDL window. There is no touch; mouse and keyboard stand in for the
  * controller's physical controls.
  *
- *   Mouse wheel / click   rotary encoder / encoder push
- *   Up, Down, Enter       keypad up / down / select
+ *   Arrows, Enter   D-pad (mouse wheel and click also work as up/down, OK)
+ *   Esc    BACK button (hold to leave the button test)
  *   K      controller arm key (latching, press to toggle)
  *   A      ARM button
  *   F      FILL button (hybrid pads, toggle)
  *   V      VENT button (hybrid pads, toggle)
- *   Space  guarded FIRE / LAUNCH button (hold)
- *   Esc    SAFE button
+ *   Space  FIRE button (hold)
+ *   P      power button
  *
  * Simulator only (fault injection, not a controller control):
  *   F1, F2  toggle the radio link of satellite A, B
@@ -26,7 +26,7 @@
 };
 
 &gpio0 {
-	ngpios = <12>;
+	ngpios = <15>;
 
 	sdl_gpio {
 		status = "okay";
@@ -35,9 +35,9 @@
 		 * USB HID scancodes, indexed by pin. Pin 0 is led0, so it gets
 		 * the unused code 0.
 		 * K=14 Space=44 Esc=41 A=4 F=9 V=25 Up=82 Down=81 Enter=40
-		 * F1=58 F2=59
+		 * F1=58 F2=59 Left=80 Right=79 P=19
 		 */
-		scancodes = <0 14 44 41 4 9 25 82 81 40 58 59>;
+		scancodes = <0 14 44 41 4 9 25 82 81 40 58 59 80 79 19>;
 	};
 };
 
@@ -55,9 +55,9 @@
 			zephyr,code = <INPUT_KEY_SPACE>;
 		};
 
-		safe_button {
+		back_button {
 			gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>;
-			zephyr,code = <INPUT_KEY_ESC>;
+			zephyr,code = <INPUT_KEY_BACK>;
 		};
 
 		arm_button {
@@ -89,6 +89,21 @@
 			gpios = <&gpio0 9 GPIO_ACTIVE_HIGH>;
 			zephyr,code = <INPUT_KEY_ENTER>;
 		};
+
+		key_left {
+			gpios = <&gpio0 12 GPIO_ACTIVE_HIGH>;
+			zephyr,code = <INPUT_KEY_LEFT>;
+		};
+
+		key_right {
+			gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>;
+			zephyr,code = <INPUT_KEY_RIGHT>;
+		};
+
+		power_button {
+			gpios = <&gpio0 14 GPIO_ACTIVE_HIGH>;
+			zephyr,code = <INPUT_KEY_POWER>;
+		};
 	};
 
 	/* Handled by the satellite simulator, see sat_sim.c */
@@ -106,17 +121,3 @@
 		};
 	};
 };
-
-/*
- * On hardware the encoder would be a gpio-qdec node reporting
- * INPUT_REL_WHEEL, and its push switch another gpio-keys entry:
- *
- *	encoder {
- *		compatible = "gpio-qdec";
- *		gpios = <&gpio0 A ...>, <&gpio0 B ...>;
- *		steps-per-period = <4>;
- *		zephyr,axis = <INPUT_REL_WHEEL>;
- *		sample-time-us = <2000>;
- *		idle-timeout-ms = <200>;
- *	};
- */

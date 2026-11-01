@@ -1,0 +1,11 @@
+board:
+  name: alturia_satellite
+  full_name: Alturia Launch Control satellite
+  vendor: others
+  revision:
+    format: letter
+    default: "A"
+    revisions:
+      - name: "A"
+  socs:
+    - name: stm32g474xx
