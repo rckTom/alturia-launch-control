@@ -1,9 +1,18 @@
 /*
- * Armed view (ARMED): whole screen inverted. The arm timeout and a
- * continuity table of the armed pads (problems inverted again), valve
- * state of hybrid pads and the fire hold progress:
+ * Armed view (ARMED): whole screen inverted, with the arm timeout, the
+ * armed pads' continuity (problems inverted again) and the fire hold
+ * progress. Up to three rocket pads, the usual case, are shown large:
  *
  *  ARMED    [! CONTINUITY: 1 PAD]           0:42
+ *
+ *   ALFA                 A  CH1               OK
+ *   Pad 2                A  CH2           [OPEN]
+ *
+ *          Hold FIRE to launch  -  BACK disarms
+ *        [##########                          ]
+ *
+ * More pads, or any hybrid, get a table with the valve state:
+ *
  *  PAD      IGN    FILL   VENT   VALVES
  *  ALFA     OK     OK     OK     FILL 0:12
  *  Pad 2    OPEN
@@ -11,8 +20,7 @@
  * Rows are sorted: continuity problems first, then hybrid pads (for their
  * valve state), then the rest. Up and down scroll when they do not fit.
  *
- * Continuity is only shown here: the satellite reads it from the armed
- * rail. Before arming it only runs its own shorted-output check.
+ * Continuity here is what the satellite reads from the armed rail.
  */
 
 #include <stdio.h>
@@ -27,6 +35,11 @@ enum { COL_PAD, COL_IGN, COL_FILL, COL_VENT, COL_VALVES, COL_COUNT };
 #define TABLE_Y0 34
 #define TABLE_H  22
 
+/* Large rows, for a few rocket pads */
+#define BIG_ROWS 3
+#define BIG_Y0   40
+#define BIG_H    44
+
 static const int32_t col_x[COL_COUNT] = {6, 96, 152, 208, 268};
 static const int32_t col_w[COL_COUNT] = {86, 52, 52, 56, 124};
 
@@ -34,16 +47,22 @@ static lv_obj_t *view;
 static lv_obj_t *warn_box;
 static lv_obj_t *warn;
 static lv_obj_t *timer;
+static lv_obj_t *table;
 static lv_obj_t *cell_box[ARMED_TABLE_ROWS][COL_COUNT];
 static lv_obj_t *cell_text[ARMED_TABLE_ROWS][COL_COUNT];
 static lv_obj_t *table_summary;
+static lv_obj_t *big_row[BIG_ROWS];
+static lv_obj_t *big_name[BIG_ROWS];
+static lv_obj_t *big_chan[BIG_ROWS];
+static lv_obj_t *big_cont_box[BIG_ROWS];
+static lv_obj_t *big_cont[BIG_ROWS];
 static lv_obj_t *hint;
 static lv_obj_t *fire_bar;
 
 static void create_table(void)
 {
 	static const char *const heads[COL_COUNT] = {"PAD", "IGN", "FILL", "VENT", "VALVES"};
-	lv_obj_t *table = ui_box(view, 0, TABLE_Y0, SCREEN_W, (ARMED_TABLE_ROWS + 2) * TABLE_H);
+	table = ui_box(view, 0, TABLE_Y0, SCREEN_W, (ARMED_TABLE_ROWS + 2) * TABLE_H);
 
 	ui_set_inverted(table, true);
 	for (int c = 0; c < COL_COUNT; c++) {
@@ -63,6 +82,29 @@ static void create_table(void)
 	/* Scroll indicator below the rows */
 	table_summary = ui_label(table, FONT_SMALL);
 	lv_obj_set_pos(table_summary, col_x[COL_PAD] + 3, (ARMED_TABLE_ROWS + 1) * TABLE_H + 2);
+}
+
+static void create_big_rows(void)
+{
+	for (int r = 0; r < BIG_ROWS; r++) {
+		big_row[r] = ui_box(view, 0, BIG_Y0 + r * BIG_H, SCREEN_W, BIG_H - 4);
+		ui_set_inverted(big_row[r], true);
+
+		big_name[r] = ui_label(big_row[r], FONT_LARGE);
+		lv_obj_set_width(big_name[r], 150);
+		lv_label_set_long_mode(big_name[r], LV_LABEL_LONG_MODE_CLIP);
+		lv_obj_align(big_name[r], LV_ALIGN_LEFT_MID, 12, 0);
+
+		big_chan[r] = ui_label(big_row[r], FONT_SMALL);
+		lv_obj_align(big_chan[r], LV_ALIGN_LEFT_MID, 170, 0);
+
+		/* As wide as its text, at the right end */
+		big_cont_box[r] = ui_box(big_row[r], 0, 0, LV_SIZE_CONTENT, BIG_H - 8);
+		lv_obj_set_style_pad_hor(big_cont_box[r], 6, 0);
+		lv_obj_align(big_cont_box[r], LV_ALIGN_RIGHT_MID, -8, 0);
+		big_cont[r] = ui_label(big_cont_box[r], FONT_LARGE);
+		lv_obj_align(big_cont[r], LV_ALIGN_LEFT_MID, 0, 0);
+	}
 }
 
 /* White on black, like the view */
@@ -100,6 +142,7 @@ void ui_armed_create(lv_obj_t *scr)
 	lv_obj_center(warn);
 
 	create_table();
+	create_big_rows();
 
 	hint = ui_text_line(view, FONT_SMALL, SCREEN_W - 2 * MARGIN, LV_TEXT_ALIGN_CENTER);
 	lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -24);
@@ -206,6 +249,25 @@ static void refresh_table(const struct ctrl_view *v, const int *order, int n, in
 	}
 }
 
+/* Rocket pads only: the igniter's continuity, large */
+static void refresh_big(const struct ctrl_view *v, const int *order, int n)
+{
+	for (int r = 0; r < BIG_ROWS; r++) {
+		const struct pad_cfg *cfg;
+		const struct sat_view *s;
+
+		if (r >= n) {
+			continue;
+		}
+		cfg = &pads[order[r]];
+		s = &v->sat[cfg->sat];
+		ui_set_text(big_name[r], pad_name(order[r]));
+		ui_set_text_fmt(big_chan[r], "%c  CH%d", sat_name(cfg->sat), cfg->ign + 1);
+		ui_set_text(big_cont[r], cont_text(s, cfg->ign));
+		ui_set_inverted(big_cont_box[r], s->st.cont[cfg->ign] == CONT_OK);
+	}
+}
+
 lv_obj_t *ui_armed_refresh(const struct ctrl_view *v, int64_t now)
 {
 	int32_t s = (v->arm_remaining_ms + 999) / 1000;
@@ -213,6 +275,7 @@ lv_obj_t *ui_armed_refresh(const struct ctrl_view *v, int64_t now)
 	int n = sort_pads(v, order);
 	bool hybrid = false;
 	int problems = 0;
+	bool big;
 
 	ui_set_text_fmt(timer, "%d:%02d", s / 60, s % 60);
 
@@ -226,7 +289,18 @@ lv_obj_t *ui_armed_refresh(const struct ctrl_view *v, int64_t now)
 				problems == 1 ? "" : "S");
 	}
 
-	refresh_table(v, order, n, now);
+	/* The large rows when they say everything, the table otherwise */
+	big = n <= BIG_ROWS && !hybrid;
+
+	ui_set_visible(table, !big);
+	if (big) {
+		refresh_big(v, order, n);
+	} else {
+		refresh_table(v, order, n, now);
+	}
+	for (int r = 0; r < BIG_ROWS; r++) {
+		ui_set_visible(big_row[r], big && r < n);
+	}
 
 	if (ui_message_recent(v, now)) {
 		/* A refused button, or a valve change that went wrong */

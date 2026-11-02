@@ -17,6 +17,14 @@ config APP_PREARM_CONTINUITY
 	  readings. The simulated satellites model it; the satellite
 	  firmware does not measure through V_TEST while disarmed yet.
 
+config APP_ARMED_BEEP
+	bool "Click every 2 s while armed"
+	default y
+	help
+	  The buzzer clicks every 2 s while pads are armed, so nobody near
+	  the controller can miss it. Arming, disarming, a launch, a fault
+	  and a refused button have their tunes either way.
+
 config APP_POLL_PERIOD_MS
 	int "Heartbeat poll period in milliseconds"
 	default 1200

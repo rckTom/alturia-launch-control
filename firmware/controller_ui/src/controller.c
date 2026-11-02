@@ -8,6 +8,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/random/random.h>
 
+#include "chime.h"
 #include "controller.h"
 #include "inputs.h"
 #include "power.h"
@@ -25,6 +26,7 @@ LOG_MODULE_REGISTER(controller, LOG_LEVEL_INF);
 #define FIRE_ACK_TIMEOUT_MS 3000
 #define ARM_TIMEOUT_MS      (CONFIG_APP_ARM_TIMEOUT_S * 1000)
 #define LINK_STABLE_MS      2000  /* link needed this long before pads return */
+#define ARMED_TICK_MS       2000  /* the click while armed */
 /* Channel utilization that makes the channel crowded, and clears it again */
 #define CROWDED_PCT         70
 #define UNCROWDED_PCT       55
@@ -49,6 +51,7 @@ static int64_t ack_deadline;   /* ARMING / FIRING acknowledgement */
 static int64_t arm_deadline;   /* inactivity timeout while ARMED */
 static int64_t fire_hold_start = -1;
 static bool fire_was_held;
+static int64_t next_armed_tick;
 
 /*
  * Per satellite, the request it has to acknowledge (common/wire/sat_wire.h):
@@ -105,7 +108,7 @@ static const struct ctrl_event *log_event(enum msg_level level, const char *fmt,
 
 /*
  * Something the operator has to be told: shown for a few seconds (a fault
- * until acknowledged) and logged.
+ * until acknowledged) and logged. Refusals and faults are heard as well.
  */
 static void message(enum msg_level level, const char *fmt, ...)
 {
@@ -119,6 +122,12 @@ static void message(enum msg_level level, const char *fmt, ...)
 	strcpy(v.message, e->text);
 	v.message_level = level;
 	v.message_time = e->time;
+
+	if (level == MSG_WARN) {
+		chime_refused();
+	} else if (level == MSG_FAULT) {
+		chime_error();
+	}
 }
 
 /* Something the screen already shows (a link state, ARMED): only logged */
@@ -362,6 +371,10 @@ static void set_all_ops(enum hybrid_op op)
 /* Disarm everything. Hybrid vents open by themselves once unpowered. */
 static void disarm_all(void)
 {
+	if (v.state != CTRL_SAFE) {
+		/* A launch or a fault plays its own tune over this one */
+		chime_disarm();
+	}
 	for (int sat = 0; sat < NUM_SATS; sat++) {
 		request(sat, CMD_DISARM, 0);
 		arm_mask[sat] = 0;
@@ -510,7 +523,9 @@ static void request_arm(void)
 	}
 	block = arm_block_reason();
 	if (block != NULL) {
+		/* The hint shows why; the press still gets an answer */
 		note(MSG_WARN, "Cannot arm: %s", block);
+		chime_refused();
 		return;
 	}
 
@@ -1413,6 +1428,8 @@ static void tick_arming(int64_t now)
 	}
 
 	if (all_armed) {
+		chime_armed();
+		next_armed_tick = now + ARMED_TICK_MS;
 		arm_deadline = now + ARM_TIMEOUT_MS;
 		v.table_scroll = 0;
 		set_state(CTRL_ARMED);
@@ -1481,9 +1498,15 @@ static void tick_armed(int64_t now)
 	}
 	v.arm_remaining_ms = (int32_t)(arm_deadline - now);
 
+	if (IS_ENABLED(CONFIG_APP_ARMED_BEEP) && now >= next_armed_tick) {
+		chime_armed_tick();
+		next_armed_tick = now + ARMED_TICK_MS;
+	}
+
 	v.launch_block = launch_block_reason();
 	if (fire_held && !fire_was_held && v.launch_block) {
 		note(MSG_WARN, "Cannot launch: %s", v.launch_block);
+		chime_refused();
 	}
 	fire_was_held = fire_held;
 
@@ -1527,6 +1550,7 @@ static void tick_firing(int64_t now)
 		disarm_all();
 		/* Spent: they would only show open igniters now */
 		v.selected = 0;
+		chime_launch();
 		message(MSG_INFO, "Launched %s, disarmed", list);
 	}
 }
