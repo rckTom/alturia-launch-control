@@ -16,12 +16,12 @@ const DARK = [0x16, 0x18, 0x15]
 
 // The controls' gpio0 pins, as boards/native_sim.overlay gives them to gpio-keys.
 const PIN = {
-  key: 1, fire: 2, back: 3, arm: 4, fill: 5, vent: 6, up: 7, down: 8, select: 9,
+  fire: 2, back: 3, arm: 4, fill: 5, vent: 6, up: 7, down: 8, select: 9,
   left: 12, right: 13, power: 14,
 }
 type Control = keyof typeof PIN
 const KEYS: Record<string, Control> = {
-  k: 'key', ' ': 'fire', Escape: 'back', a: 'arm', f: 'fill', v: 'vent', p: 'power',
+  ' ': 'fire', Escape: 'back', a: 'arm', f: 'fill', v: 'vent', p: 'power',
   ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'select',
 }
 const down = reactive<Record<string, boolean>>({})
@@ -150,8 +150,6 @@ function releaseAll() {
       </span>
     </div>
     <div class="controls">
-      <button class="key" :class="{ down: down.key }" title="Arm key, latching: each press toggles it (K)"
-        @pointerdown="control('key', true)" @pointerup="control('key', false)" @pointerleave="control('key', false)">KEY</button>
       <button class="arm" :class="{ down: down.arm }" title="A"
         @pointerdown="control('arm', true)" @pointerup="control('arm', false)" @pointerleave="control('arm', false)">ARM</button>
       <button :class="{ down: down.fill }" title="F"
@@ -171,7 +169,7 @@ function releaseAll() {
       </div>
       <button class="power" :class="{ down: down.power }" title="Power button (P)"
         @pointerdown="control('power', true)" @pointerup="control('power', false)" @pointerleave="control('power', false)">POWER</button>
-      <p class="muted help">Click the screen for the keyboard: K A F V P, Space fire, Esc back, arrows, Enter.</p>
+      <p class="muted help">Click the screen for the keyboard: A F V P, Space fire, Esc back, arrows, Enter.</p>
     </div>
   </div>
 </template>
@@ -225,9 +223,6 @@ canvas {
 .controls button.down {
   background: #1e3a5f;
   border-color: var(--accent);
-}
-.key {
-  grid-column: span 2;
 }
 .arm {
   color: #fbbf24;

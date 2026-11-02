@@ -10,11 +10,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-bool inputs_key_on(void);
 bool inputs_fire_held(void);
 
-/* Overrides for the shell, e.g. when the SDL window has no focus. */
-void inputs_set_key(bool on);
+/* Override for the shell, e.g. when the SDL window has no focus. */
 void inputs_set_fire(bool held);
 
 /* Every button, for the button test screen */
@@ -30,7 +28,6 @@ enum button {
 	BTN_OK,
 	BTN_BACK,
 	BTN_POWER,
-	BTN_KEY,     /* arm key switch, only with CONFIG_APP_KEY_SWITCH */
 	BTN_COUNT,
 };
 

@@ -459,10 +459,6 @@ static const char *arm_block_reason(void)
 			return buf;
 		}
 	}
-
-	if (!v.key_on) {
-		return "Turn the controller key to arm";
-	}
 	return NULL;
 }
 
@@ -1394,11 +1390,6 @@ static void tick_arming(int64_t now)
 {
 	bool all_armed = true;
 
-	if (!v.key_on) {
-		request_safe("controller key turned off");
-		return;
-	}
-
 	for (int sat = 0; sat < NUM_SATS; sat++) {
 		uint8_t refused = v.sat[sat].st.arm_refused;
 
@@ -1477,10 +1468,6 @@ static void tick_armed(int64_t now)
 			fault("Satellite %c dropped arm (pad key or heartbeat)", sat);
 			return;
 		}
-	}
-	if (!v.key_on) {
-		request_safe("controller key turned off");
-		return;
 	}
 
 	/* A fill can take minutes; timing out would vent the tank */
@@ -1613,7 +1600,6 @@ void ctrl_tick(void)
 	for (int p = 0; p < NUM_PADS; p++) {
 		v.pad[p].problem = pad_problem(p);
 	}
-	v.key_on = inputs_key_on();
 	if (!v.settings.active) {
 		fix_cursor();
 	}

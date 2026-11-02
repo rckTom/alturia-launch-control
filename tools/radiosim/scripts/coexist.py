@@ -363,9 +363,8 @@ async def commands(sim: Sim, loss: float, args_runs_cmd: int = 3, ctrl: str = "c
     from the controller's own log."""
     print(f"\nARM / FIRE on network 1, {loss:g} % random loss on the {ctrl}-{sat} link:")
     for run in range(args_runs_cmd):
-        out = await sim.shell(ctrl, ["ctrl back", "ctrl key on", "ctrl arm"], 0.4)
-        if "Select pads" in out:
-            out += await sim.shell(ctrl, ["ctrl select 2", "ctrl arm"], 0.4)
+        # BACK disarms, or in SAFE clears the ticks; then tick pad 2 alone
+        out = await sim.shell(ctrl, ["ctrl back", "ctrl select 2", "ctrl arm"], 0.4)
         out += await sim.shell(ctrl, [], 2.0)
         out += await sim.shell(ctrl, ["ctrl fire on"], 1.3)
         out += await sim.shell(ctrl, ["ctrl fire off"], 4.0)

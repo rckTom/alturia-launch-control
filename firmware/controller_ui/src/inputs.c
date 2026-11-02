@@ -13,7 +13,6 @@
 LOG_MODULE_REGISTER(inputs, LOG_LEVEL_INF);
 
 /* Levels, written from the input thread and read from the LVGL thread */
-static atomic_t key_on;
 static atomic_t fire_held;
 
 /* OK or BACK held this long is a long press */
@@ -74,7 +73,6 @@ static const struct {
 	[BTN_OK] = {INPUT_KEY_ENTER, "OK"},
 	[BTN_BACK] = {INPUT_KEY_BACK, "BACK"},
 	[BTN_POWER] = {INPUT_KEY_POWER, "POWER"},
-	[BTN_KEY] = {INPUT_KEY_K, "KEY"},
 };
 
 const char *button_name(enum button b)
@@ -174,15 +172,6 @@ static void on_input(struct input_event *evt, void *user_data)
 	record(b, evt->value != 0);
 
 	switch (b) {
-	case BTN_KEY:
-		/* The real part is a latching key switch; emulate the latch. */
-		if (evt->value) {
-			bool on = !atomic_get(&key_on);
-
-			atomic_set(&key_on, on);
-			LOG_INF("controller key %s", on ? "ON" : "OFF");
-		}
-		break;
 	case BTN_FIRE:
 		atomic_set(&fire_held, evt->value != 0);
 		break;
@@ -245,20 +234,9 @@ static void on_input(struct input_event *evt, void *user_data)
 /* All input devices: the buttons, and the mouse on native_sim */
 INPUT_CALLBACK_DEFINE(NULL, on_input, NULL);
 
-bool inputs_key_on(void)
-{
-	/* Without a key switch, ARM alone arms */
-	return !IS_ENABLED(CONFIG_APP_KEY_SWITCH) || atomic_get(&key_on) != 0;
-}
-
 bool inputs_fire_held(void)
 {
 	return atomic_get(&fire_held) != 0;
-}
-
-void inputs_set_key(bool on)
-{
-	atomic_set(&key_on, on);
 }
 
 void inputs_set_fire(bool held)

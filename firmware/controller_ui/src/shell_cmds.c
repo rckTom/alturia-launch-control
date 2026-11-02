@@ -47,18 +47,6 @@ static int parse_index(const struct shell *sh, const char *arg, int count, const
 	return i - 1;
 }
 
-static int cmd_ctrl_key(const struct shell *sh, size_t argc, char **argv)
-{
-	bool on;
-
-	ARG_UNUSED(argc);
-	if (parse_on_off(sh, argv[1], &on)) {
-		return -EINVAL;
-	}
-	inputs_set_key(on);
-	return 0;
-}
-
 static int cmd_ctrl_fire(const struct shell *sh, size_t argc, char **argv)
 {
 	bool held;
@@ -180,7 +168,7 @@ static const char kbd_help[] =
 	"  Arrows  D-pad       Enter  OK      e  hold OK\n"
 	"  b  BACK             B  hold BACK   a  ARM\n"
 	"  f  FILL             v  VENT        Space  FIRE (toggle)\n"
-	"  p  power button     k  arm key (toggle, if the controller has one)";
+	"  p  power button";
 
 static enum { KBD_NORMAL, KBD_ESC, KBD_CSI } kbd_state;
 static bool kbd_last_cr;
@@ -196,10 +184,6 @@ static void kbd_leave(const struct shell *sh)
 static void kbd_key(const struct shell *sh, uint8_t c)
 {
 	switch (c) {
-	case 'k':
-		inputs_set_key(!inputs_key_on());
-		shell_print(sh, "controller key %s", inputs_key_on() ? "ON" : "OFF");
-		break;
 	case ' ':
 		inputs_set_fire(!inputs_fire_held());
 		shell_print(sh, "FIRE %s", inputs_fire_held() ? "held" : "released");
@@ -347,7 +331,6 @@ static int cmd_ctrl_link(const struct shell *sh, size_t argc, char **argv)
 
 SHELL_STATIC_SUBCMD_SET_CREATE(ctrl_cmds,
 	SHELL_CMD(kbd, NULL, "Keyboard mode: drive the controls with single keys", cmd_ctrl_kbd),
-	SHELL_CMD_ARG(key, NULL, "Controller arm key <on|off>", cmd_ctrl_key, 2, 0),
 	SHELL_CMD_ARG(select, NULL, "Toggle pad selection <1-48>", cmd_ctrl_select, 2, 0),
 	SHELL_CMD_ARG(up, NULL, "D-pad up [times]", cmd_ctrl_up, 1, 1),
 	SHELL_CMD_ARG(down, NULL, "D-pad down [times]", cmd_ctrl_down, 1, 1),

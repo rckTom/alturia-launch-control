@@ -197,7 +197,6 @@ struct ctrl_view {
 	int diag;                     /* open diagnostics screen, DIAG_NONE if none */
 	bool power_confirm;       /* asking whether to switch off */
 	bool powering_off;        /* switched off, waiting for the power to go */
-	bool key_on;
 	/* Why arming is currently not possible, NULL if it is */
 	const char *arm_block;
 	/* Why launching is currently not possible while armed, NULL if it is */

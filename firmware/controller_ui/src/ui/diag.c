@@ -53,9 +53,6 @@ static void create_buttons_page(lv_obj_t *p)
 		btn_text[b] = ui_label(btn_box[b], FONT_SMALL);
 		lv_obj_center(btn_text[b]);
 	}
-	if (!IS_ENABLED(CONFIG_APP_KEY_SWITCH)) {
-		ui_set_visible(btn_box[BTN_KEY], false);
-	}
 
 	ui_rule(p, BTN_LOG_Y - 4);
 
