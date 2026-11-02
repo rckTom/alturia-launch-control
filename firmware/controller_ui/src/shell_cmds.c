@@ -348,7 +348,7 @@ static int cmd_ctrl_link(const struct shell *sh, size_t argc, char **argv)
 SHELL_STATIC_SUBCMD_SET_CREATE(ctrl_cmds,
 	SHELL_CMD(kbd, NULL, "Keyboard mode: drive the controls with single keys", cmd_ctrl_kbd),
 	SHELL_CMD_ARG(key, NULL, "Controller arm key <on|off>", cmd_ctrl_key, 2, 0),
-	SHELL_CMD_ARG(select, NULL, "Toggle pad selection <1-7>", cmd_ctrl_select, 2, 0),
+	SHELL_CMD_ARG(select, NULL, "Toggle pad selection <1-48>", cmd_ctrl_select, 2, 0),
 	SHELL_CMD_ARG(up, NULL, "D-pad up [times]", cmd_ctrl_up, 1, 1),
 	SHELL_CMD_ARG(down, NULL, "D-pad down [times]", cmd_ctrl_down, 1, 1),
 	SHELL_CMD_ARG(left, NULL, "D-pad left [times]", cmd_ctrl_left, 1, 1),
@@ -385,7 +385,7 @@ static void shell_print_cb(const char *fmt, ...)
 	va_end(ap);
 }
 
-/* Satellite by letter (a, b) */
+/* Satellite by letter (a-h) */
 static int parse_sat(const struct shell *sh, const char *arg)
 {
 	int sat = tolower((unsigned char)arg[0]) - 'a';
@@ -512,18 +512,18 @@ static int cmd_sat_res(const struct shell *sh, size_t argc, char **argv)
 }
 
 SHELL_STATIC_SUBCMD_SET_CREATE(sat_cmds,
-	SHELL_CMD_ARG(status, NULL, "Show simulated satellites [a|b]", cmd_sat_status, 1, 1),
-	SHELL_CMD_ARG(link, NULL, "Radio link <a|b> <on|off>", cmd_sat_link, 3, 0),
-	SHELL_CMD_ARG(loss, NULL, "Packet loss <a|b> <percent>", cmd_sat_loss, 3, 0),
-	SHELL_CMD_ARG(key, NULL, "Pad key switch <a|b> <arm|safe>", cmd_sat_key, 3, 0),
-	SHELL_CMD_ARG(estop, NULL, "Pad E-STOP <a|b> <on|off>", cmd_sat_estop, 3, 0),
-	SHELL_CMD_ARG(res, NULL, "Channel load <a|b> <1-6> <mOhm|open>", cmd_sat_res, 4, 0),
-	SHELL_CMD_ARG(vbat, NULL, "Pack voltage <a|b> <mV>", cmd_sat_vbat, 3, 0),
-	SHELL_CMD_ARG(pair, NULL, "Pairing gesture: enter pairing mode <a|b>", cmd_sat_pair, 2, 0),
-	SHELL_CMD_ARG(confirm, NULL, "Satellite user: LEDs match the controller <a|b>",
+	SHELL_CMD_ARG(status, NULL, "Show simulated satellites [a-h]", cmd_sat_status, 1, 1),
+	SHELL_CMD_ARG(link, NULL, "Radio link <a-h> <on|off>", cmd_sat_link, 3, 0),
+	SHELL_CMD_ARG(loss, NULL, "Packet loss <a-h> <percent>", cmd_sat_loss, 3, 0),
+	SHELL_CMD_ARG(key, NULL, "Pad key switch <a-h> <arm|safe>", cmd_sat_key, 3, 0),
+	SHELL_CMD_ARG(estop, NULL, "Pad E-STOP <a-h> <on|off>", cmd_sat_estop, 3, 0),
+	SHELL_CMD_ARG(res, NULL, "Channel load <a-h> <1-6> <mOhm|open>", cmd_sat_res, 4, 0),
+	SHELL_CMD_ARG(vbat, NULL, "Pack voltage <a-h> <mV>", cmd_sat_vbat, 3, 0),
+	SHELL_CMD_ARG(pair, NULL, "Pairing gesture: enter pairing mode <a-h>", cmd_sat_pair, 2, 0),
+	SHELL_CMD_ARG(confirm, NULL, "Satellite user: LEDs match the controller <a-h>",
 		      cmd_sat_confirm, 2, 0),
-	SHELL_CMD_ARG(reject, NULL, "Satellite user: LEDs differ <a|b>", cmd_sat_confirm, 2, 0),
-	SHELL_CMD_ARG(unpair, NULL, "Satellite forgets its controller <a|b>", cmd_sat_unpair, 2,
+	SHELL_CMD_ARG(reject, NULL, "Satellite user: LEDs differ <a-h>", cmd_sat_confirm, 2, 0),
+	SHELL_CMD_ARG(unpair, NULL, "Satellite forgets its controller <a-h>", cmd_sat_unpair, 2,
 		      0),
 	SHELL_SUBCMD_SET_END
 );

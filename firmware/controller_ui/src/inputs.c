@@ -38,6 +38,26 @@ static void back_long_press(struct k_work *work)
 
 static K_WORK_DELAYABLE_DEFINE(back_long_work, back_long_press);
 
+/* Up or down held: the cursor keeps moving, for long lists */
+#define REPEAT_DELAY_MS  400
+#define REPEAT_PERIOD_MS 120
+
+static atomic_t repeat_dir;   /* -1 up, 1 down, 0 neither held */
+
+static void repeat_step(struct k_work *work);
+static K_WORK_DELAYABLE_DEFINE(repeat_work, repeat_step);
+
+static void repeat_step(struct k_work *work)
+{
+	int dir = (int)atomic_get(&repeat_dir);
+
+	ARG_UNUSED(work);
+	if (dir) {
+		ctrl_post(CTRL_REQ_CURSOR, dir);
+		k_work_reschedule(&repeat_work, K_MSEC(REPEAT_PERIOD_MS));
+	}
+}
+
 /* Key codes per button, as the board devicetree (or native_sim) gives them */
 static const struct {
 	uint16_t code;
@@ -191,11 +211,18 @@ static void on_input(struct input_event *evt, void *user_data)
 		}
 		break;
 	case BTN_UP:
-	case BTN_DOWN:
+	case BTN_DOWN: {
+		int dir = b == BTN_UP ? -1 : 1;
+
 		if (evt->value) {
-			ctrl_post(CTRL_REQ_CURSOR, b == BTN_UP ? -1 : 1);
+			ctrl_post(CTRL_REQ_CURSOR, dir);
+			atomic_set(&repeat_dir, dir);
+			k_work_reschedule(&repeat_work, K_MSEC(REPEAT_DELAY_MS));
+		} else if (atomic_cas(&repeat_dir, dir, 0)) {
+			k_work_cancel_delayable(&repeat_work);
 		}
 		break;
+	}
 	case BTN_LEFT:
 	case BTN_RIGHT:
 		if (evt->value) {

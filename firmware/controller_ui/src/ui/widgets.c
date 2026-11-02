@@ -152,6 +152,41 @@ lv_obj_t *ui_cursor(lv_obj_t *view)
 	return cursor;
 }
 
+int ui_scroll(int first, int top, int cursor, int count, int rows)
+{
+	if (cursor >= 0) {
+		if (top < first) {
+			first = top;
+		}
+		if (cursor >= first + rows) {
+			first = cursor - rows + 1;
+		}
+	}
+	return CLAMP(first, 0, MAX(count - rows, 0));
+}
+
+lv_obj_t *ui_scrollbar(lv_obj_t *view, int32_t y, int32_t h)
+{
+	lv_obj_t *bar = ui_box(view, SCREEN_W - 5, y, 3, h);
+
+	ui_set_inverted(bar, true);
+	ui_set_visible(bar, false);
+	return bar;
+}
+
+void ui_scrollbar_set(lv_obj_t *bar, int32_t y, int32_t h, int first, int count, int rows)
+{
+	int32_t len;
+
+	ui_set_visible(bar, count > rows);
+	if (count <= rows) {
+		return;
+	}
+	len = MAX(h * rows / count, 12);
+	lv_obj_set_pos(bar, SCREEN_W - 5, y + (h - len) * first / (count - rows));
+	lv_obj_set_height(bar, len);
+}
+
 lv_obj_t *ui_view(lv_obj_t *scr, bool inverted)
 {
 	lv_obj_t *view = ui_box(scr, 0, 0, SCREEN_W, SCREEN_H);

@@ -1,6 +1,14 @@
 /*
- * Pads: all pads including OFF ones, with their channels. The main list
- * only shows enabled pads.
+ * Pads: every channel of every satellite with pads or a pairing, and the
+ * pad that uses it. OK on a channel sets its pad up, or a new rocket pad
+ * if the channel is free. Left and right jump a satellite.
+ *
+ *  SETTINGS  -  PADS
+ *  A  51A7E11172000000                   paired
+ *  CH1   ALFA    hybrid igniter
+ *  CH2   Pad 2   rocket
+ *  CH3   free
+ *  ...
  *
  * Pad setup: label, type, satellite and channels of one pad. The focused
  * field is inverted; the label is edited in one box per character.
@@ -11,14 +19,24 @@
 #include "views.h"
 #include "widgets.h"
 
-/* Pad list */
-enum { COL_NUM, COL_LABEL, COL_TYPE, COL_SAT, COL_CHANNELS, COL_COUNT };
+/* Channel list */
+#define ROWS_PER_SAT (1 + NUM_CHANNELS)
 
-static const int32_t col_x[COL_COUNT] = {6, 28, 90, 160, 184};
+struct chan_row {
+	lv_obj_t *head;
+	lv_obj_t *head_name;
+	lv_obj_t *head_state;
+	lv_obj_t *chan;
+	lv_obj_t *ch;
+	lv_obj_t *name;
+	lv_obj_t *role;
+};
 
 static lv_obj_t *padlist_view;
-static lv_obj_t *padlist_col[NUM_PADS][COL_COUNT];
-static lv_obj_t *padlist_cursor;
+static struct chan_row padlist_rows[LIST_ROWS];
+static lv_obj_t *padlist_bar;
+static lv_obj_t *padlist_empty;
+static int padlist_first;
 
 /* Pad setup */
 #define SETUP_Y0 33
@@ -30,7 +48,6 @@ static const char *const field_names[FIELD_COUNT] = {
 
 static lv_obj_t *setup_view;
 static lv_obj_t *setup_title;
-static lv_obj_t *setup_cursor;
 static lv_obj_t *setup_row[FIELD_COUNT];
 static lv_obj_t *setup_value[FIELD_COUNT];
 static lv_obj_t *setup_char_box[PAD_LABEL_MAX];
@@ -41,23 +58,42 @@ static lv_obj_t *setup_error;
 static void create_padlist(lv_obj_t *scr)
 {
 	padlist_view = ui_view(scr, false);
-	ui_title(padlist_view, "SETTINGS  -  PADS");
+	ui_title(padlist_view, "MENU  -  PADS");
 
-	for (int p = 0; p < NUM_PADS; p++) {
-		lv_obj_t *row = ui_box(padlist_view, ROW_X, PAD_ROW_Y0 + p * PAD_ROW_H,
-				       SCREEN_W - 22, PAD_ROW_H - 2);
+	for (int i = 0; i < LIST_ROWS; i++) {
+		struct chan_row *r = &padlist_rows[i];
+		int32_t y = LIST_Y0 + i * LIST_ROW_H;
 
-		for (int c = 0; c < COL_COUNT; c++) {
-			padlist_col[p][c] = ui_label(row, FONT_SMALL);
-			lv_obj_align(padlist_col[p][c], LV_ALIGN_LEFT_MID, col_x[c], 0);
-		}
-		lv_obj_set_width(padlist_col[p][COL_LABEL], 60);
-		lv_label_set_long_mode(padlist_col[p][COL_LABEL], LV_LABEL_LONG_MODE_CLIP);
+		/* Satellite: underlined */
+		r->head = ui_box(padlist_view, 6, y, LIST_ROW_W, LIST_ROW_H - 1);
+		lv_obj_set_style_border_side(r->head, LV_BORDER_SIDE_BOTTOM, 0);
+		lv_obj_set_style_border_width(r->head, 1, 0);
+		lv_obj_set_style_border_color(r->head, lv_color_black(), 0);
+		r->head_name = ui_label(r->head, FONT_MEDIUM);
+		lv_obj_align(r->head_name, LV_ALIGN_LEFT_MID, 2, 0);
+		r->head_state = ui_label(r->head, FONT_SMALL);
+		lv_obj_align(r->head_state, LV_ALIGN_RIGHT_MID, -3, 0);
+
+		/* Channel */
+		r->chan = ui_box(padlist_view, 6, y, LIST_ROW_W, LIST_ROW_H - 1);
+		r->ch = ui_label(r->chan, FONT_SMALL);
+		lv_obj_align(r->ch, LV_ALIGN_LEFT_MID, 22, 0);
+		r->name = ui_label(r->chan, FONT_MEDIUM);
+		lv_obj_set_width(r->name, 90);
+		lv_label_set_long_mode(r->name, LV_LABEL_LONG_MODE_CLIP);
+		lv_obj_align(r->name, LV_ALIGN_LEFT_MID, 66, 0);
+		r->role = ui_label(r->chan, FONT_SMALL);
+		lv_obj_align(r->role, LV_ALIGN_LEFT_MID, 162, 0);
 	}
-	padlist_cursor = ui_cursor(padlist_view);
+	padlist_bar = ui_scrollbar(padlist_view, LIST_Y0, LIST_H);
 
-	ui_footer(padlist_view, PAD_ROW_Y0 + NUM_PADS * PAD_ROW_H + 1,
-		  LV_SYMBOL_UP LV_SYMBOL_DOWN " pad    OK: set up    BACK: back");
+	padlist_empty = ui_text_line(padlist_view, FONT_MEDIUM, SCREEN_W - 2 * MARGIN,
+				     LV_TEXT_ALIGN_CENTER);
+	lv_obj_set_pos(padlist_empty, MARGIN, LIST_Y0 + LIST_H / 2 - 12);
+	ui_set_text(padlist_empty, "Pair a satellite first");
+
+	ui_footer(padlist_view, LIST_RULE_Y, LV_SYMBOL_UP LV_SYMBOL_DOWN " channel  "
+		  LV_SYMBOL_LEFT LV_SYMBOL_RIGHT " satellite  OK: set up  BACK: back");
 }
 
 static void create_setup(lv_obj_t *scr)
@@ -89,7 +125,6 @@ static void create_setup(lv_obj_t *scr)
 		setup_char[i] = ui_label(setup_char_box[i], FONT_MEDIUM);
 		lv_obj_center(setup_char[i]);
 	}
-	setup_cursor = ui_cursor(setup_view);
 
 	/* Two lines under the fields: what the buttons do, and what is wrong */
 	ui_rule(setup_view, bottom + 1);
@@ -106,33 +141,65 @@ void ui_pads_create(lv_obj_t *scr)
 	create_setup(scr);
 }
 
+/* What a pad does with a channel */
+static const char *role_text(const struct pad_cfg *cfg, int ch)
+{
+	if (cfg->type == PAD_ROCKET) {
+		return "rocket";
+	}
+	if (ch == cfg->fill) {
+		return "hybrid fill";
+	}
+	return ch == cfg->vent ? "hybrid vent" : "hybrid igniter";
+}
+
+/* row 0 is the satellite's header, the others its channels */
+static void refresh_chan_row(const struct chan_row *r, const struct ctrl_view *v, int sat,
+			     int row)
+{
+	ui_set_visible(r->head, row == 0);
+	ui_set_visible(r->chan, row > 0);
+
+	if (row == 0) {
+		ui_set_text_fmt(r->head_name, "%c", sat_name(sat));
+		ui_set_text(r->head_state, v->sat[sat].uid ? "paired" : "not paired");
+	} else {
+		int ch = row - 1;
+		int p = ctrl_channel_pad(sat, ch);
+
+		ui_set_text_fmt(r->ch, "CH%d", ch + 1);
+		ui_set_text(r->name, p >= 0 ? pad_name(p) : "free");
+		ui_set_text(r->role, p >= 0 ? role_text(&pads[p], ch) : "");
+	}
+}
+
 lv_obj_t *ui_padlist_refresh(const struct ctrl_view *v)
 {
-	for (int p = 0; p < NUM_PADS; p++) {
-		const struct pad_cfg *cfg = &pads[p];
-		lv_obj_t **col = padlist_col[p];
+	int sats[NUM_SATS];
+	int n = ctrl_pads_sats(sats);
+	int count = n * ROWS_PER_SAT;
+	/* Its row: the satellite's header, then one per channel */
+	int cursor = n ? (v->pad_list.cursor / NUM_CHANNELS) * ROWS_PER_SAT + 1 +
+			 v->pad_list.cursor % NUM_CHANNELS : -1;
+	/* The header too, on a satellite's first channel */
+	int top = cursor - (v->pad_list.cursor % NUM_CHANNELS == 0);
 
-		ui_set_text_fmt(col[COL_NUM], "%d", p + 1);
-		ui_set_text(col[COL_LABEL], cfg->label[0] ? cfg->label : "-");
-		ui_set_text(col[COL_TYPE], pad_type_name(cfg->type));
+	padlist_first = ui_scroll(padlist_first, top, cursor, count, LIST_ROWS);
 
-		switch (cfg->type) {
-		case PAD_HYBRID:
-			ui_set_text_fmt(col[COL_SAT], "%c", sat_name(cfg->sat));
-			ui_set_text_fmt(col[COL_CHANNELS], "IGN %d  FILL %d  VENT %d",
-					cfg->ign + 1, cfg->fill + 1, cfg->vent + 1);
-			break;
-		case PAD_ROCKET:
-			ui_set_text_fmt(col[COL_SAT], "%c", sat_name(cfg->sat));
-			ui_set_text_fmt(col[COL_CHANNELS], "IGN %d", cfg->ign + 1);
-			break;
-		default:
-			ui_set_text(col[COL_SAT], "");
-			ui_set_text(col[COL_CHANNELS], "");
-			break;
+	for (int i = 0; i < LIST_ROWS; i++) {
+		const struct chan_row *r = &padlist_rows[i];
+		int k = padlist_first + i;
+
+		if (k >= count) {
+			ui_set_visible(r->head, false);
+			ui_set_visible(r->chan, false);
+			continue;
 		}
+		refresh_chan_row(r, v, sats[k / ROWS_PER_SAT], k % ROWS_PER_SAT);
+		ui_set_inverted(r->chan, k == cursor);
 	}
-	lv_obj_set_pos(padlist_cursor, CURSOR_X, PAD_ROW_Y0 + v->pad_list.cursor * PAD_ROW_H + 3);
+	ui_scrollbar_set(padlist_bar, LIST_Y0, LIST_H, padlist_first, count, LIST_ROWS);
+	ui_set_visible(padlist_empty, n == 0);
 	return padlist_view;
 }
 
@@ -224,11 +291,15 @@ lv_obj_t *ui_setup_refresh(const struct ctrl_view *v)
 	const struct pad_setup *su = &v->setup;
 	bool editing_label = su->mode == SETUP_LABEL;
 
-	ui_set_text_fmt(setup_title, "PAD %d SETUP", su->pad + 1);
+	if (su->is_new) {
+		ui_set_text_fmt(setup_title, "NEW PAD %d  -  %c CH%d", su->pad + 1,
+				sat_name(su->cfg.sat), su->cfg.ign + 1);
+	} else {
+		ui_set_text_fmt(setup_title, "PAD %d SETUP", su->pad + 1);
+	}
 	refresh_fields(su, editing_label);
 	refresh_label_editor(su, editing_label);
 
-	lv_obj_set_pos(setup_cursor, CURSOR_X, SETUP_Y0 + su->field * SETUP_H + 4);
 	ui_set_text(setup_help, help[su->mode]);
 	if (su->error) {
 		ui_set_text_fmt(setup_error, LV_SYMBOL_WARNING " %s", su->error);

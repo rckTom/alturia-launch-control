@@ -1,6 +1,7 @@
 /*
- * Satellites: one row per satellite slot with its paired satellite and
- * link state. OK pairs, holding OK forgets.
+ * Satellites: one row per satellite slot with its paired satellite, link
+ * state and battery. OK pairs, holding OK forgets. The line under them is
+ * the latest message for a while, otherwise what the buttons do.
  *
  * Pairing: first the satellites heard in pairing mode, then the 4x6
  * pattern the operator compares with the satellite's channel LEDs:
@@ -18,16 +19,18 @@
 #include "views.h"
 #include "widgets.h"
 
-/* Satellites */
-#define SATS_Y0 40
-#define SATS_H  34
+/* Satellites: all slots fit, LIST_ROWS of them */
+BUILD_ASSERT(NUM_SATS <= LIST_ROWS);
+
+static const char sats_help[] = LV_SYMBOL_UP LV_SYMBOL_DOWN
+	" satellite   OK: pair   Hold OK: forget   BACK: back";
 
 static lv_obj_t *sats_view;
 static lv_obj_t *sats_row[NUM_SATS];
 static lv_obj_t *sats_uid[NUM_SATS];
 static lv_obj_t *sats_state[NUM_SATS];
-static lv_obj_t *sats_cursor;
-static lv_obj_t *sats_message;
+static lv_obj_t *sats_volt[NUM_SATS];
+static lv_obj_t *sats_footer;
 
 /* Pairing */
 #define PAIR_LIST_Y0 84
@@ -50,32 +53,32 @@ static lv_obj_t *pair_help;
 static void create_sats(lv_obj_t *scr)
 {
 	sats_view = ui_view(scr, false);
-	ui_title(sats_view, "SETTINGS  -  SATELLITES");
+	ui_title(sats_view, "MENU  -  SATELLITES");
 
 	for (int sat = 0; sat < NUM_SATS; sat++) {
 		lv_obj_t *name;
 
-		sats_row[sat] = ui_box(sats_view, ROW_X, SATS_Y0 + sat * SATS_H, SCREEN_W - 22,
-				       SATS_H - 4);
+		sats_row[sat] = ui_box(sats_view, 6, LIST_Y0 + sat * LIST_ROW_H, LIST_ROW_W,
+				       LIST_ROW_H - 1);
 
 		name = ui_label(sats_row[sat], FONT_MEDIUM);
 		ui_set_text_fmt(name, "%c", sat_name(sat));
-		lv_obj_align(name, LV_ALIGN_LEFT_MID, 8, 0);
+		lv_obj_align(name, LV_ALIGN_LEFT_MID, 6, 0);
 
 		sats_uid[sat] = ui_label(sats_row[sat], FONT_SMALL);
-		lv_obj_align(sats_uid[sat], LV_ALIGN_LEFT_MID, 40, 0);
+		lv_obj_align(sats_uid[sat], LV_ALIGN_LEFT_MID, 32, 0);
 
 		sats_state[sat] = ui_label(sats_row[sat], FONT_SMALL);
-		lv_obj_align(sats_state[sat], LV_ALIGN_LEFT_MID, 262, 0);
+		lv_obj_align(sats_state[sat], LV_ALIGN_LEFT_MID, 200, 0);
+
+		sats_volt[sat] = ui_label(sats_row[sat], FONT_SMALL);
+		lv_obj_align(sats_volt[sat], LV_ALIGN_RIGHT_MID, -6, 0);
 	}
-	sats_cursor = ui_cursor(sats_view);
 
-	sats_message = ui_text_line(sats_view, FONT_SMALL, SCREEN_W - 2 * MARGIN,
-				    LV_TEXT_ALIGN_LEFT);
-	lv_obj_set_pos(sats_message, MARGIN, 184);
-
-	ui_footer(sats_view, 206, LV_SYMBOL_UP LV_SYMBOL_DOWN
-		  " satellite   OK: pair   Hold OK: forget   BACK: back");
+	ui_rule(sats_view, LIST_RULE_Y);
+	sats_footer = ui_text_line(sats_view, FONT_SMALL, SCREEN_W - 2 * MARGIN,
+				   LV_TEXT_ALIGN_LEFT);
+	lv_obj_set_pos(sats_footer, MARGIN, LIST_RULE_Y + 6);
 }
 
 static void create_pair(lv_obj_t *scr)
@@ -139,6 +142,7 @@ lv_obj_t *ui_sats_refresh(const struct ctrl_view *v, int64_t now)
 		if (!s->uid) {
 			ui_set_text(sats_uid[sat], "not paired");
 			ui_set_text(sats_state[sat], "");
+			ui_set_text(sats_volt[sat], "");
 			continue;
 		}
 		uid_text(buf, sizeof(buf), s->uid);
@@ -146,13 +150,18 @@ lv_obj_t *ui_sats_refresh(const struct ctrl_view *v, int64_t now)
 		ui_set_text(sats_state[sat], s->link_ok ? "connected"
 					     : s->joined ? "joined, no status"
 							 : "no link");
+		if (s->have_status) {
+			ui_set_text_fmt(sats_volt[sat], "%d.%dV", s->st.vbat_mv / 1000,
+					(s->st.vbat_mv % 1000) / 100);
+		} else {
+			ui_set_text(sats_volt[sat], "");
+		}
 	}
-	lv_obj_set_pos(sats_cursor, CURSOR_X, SATS_Y0 + v->sats.cursor * SATS_H + 7);
 
 	if (ui_message_recent(v, now)) {
-		ui_set_message(sats_message, v);
+		ui_set_message(sats_footer, v);
 	} else {
-		ui_set_text(sats_message, "");
+		ui_set_text(sats_footer, sats_help);
 	}
 	return sats_view;
 }

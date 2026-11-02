@@ -4,19 +4,25 @@
  * the button input callback or the shell.
  * ctrl_tick() and ctrl_view() run in the LVGL thread.
  *
- * Operators select pads, not channels. Arming arms every satellite that
- * hosts a selected pad. FIRE launches all selected pads at once. On
- * hybrid pads, FILL and VENT toggle the valves while armed; either one,
- * and LAUNCH, stops a running fill.
+ * Operators select pads, not channels. The main list shows the pads of
+ * every paired satellite, grouped by satellite in channel order; up and
+ * down move over them, left and right jump to the previous and next
+ * satellite, OK ticks a pad and BACK clears the ticks. ARM arms the ticked
+ * pads, or the pad under the cursor if none is ticked, on every satellite
+ * that hosts one of them. FIRE launches them all at once. On hybrid pads,
+ * FILL and VENT toggle the valves while armed; either one, and LAUNCH,
+ * stops a running fill.
  *
  * The controls are a D-pad (up, down, left, right, OK), BACK, ARM, FIRE,
  * FILL, VENT and the power button. BACK disarms, acknowledges a fault and
  * backs out of a screen.
  *
- * In SAFE, holding OK opens the settings menu:
- *  - Pads: all pads including OFF ones (the main list only shows enabled
- *    pads); OK on one opens its setup screen.
+ * In SAFE, holding OK opens the menu:
+ *  - Edit pad: the setup screen of the pad under the cursor.
+ *  - Pads: every channel of every satellite and the pad using it; OK
+ *    sets that pad up, or on a free channel sets up a new rocket pad.
  *  - Satellites: pairing and forgetting.
+ *  - Messages: the last events, newest first.
  *  - Diagnostics, a menu of its own: the button test, which shows every
  *    button press instead of acting on it (holding BACK leaves), and the
  *    battery.
@@ -61,12 +67,13 @@ struct sat_view {
 	bool have_status;
 	bool link_ok;   /* status received within the link timeout */
 	/*
-	 * Its pads are shown and selectable. Drops with link_ok, but only
-	 * returns once the link has been stable for a while, so pads do not
-	 * flicker at the edge of the radio range.
+	 * Connected as far as the operator is told. Drops with link_ok, but
+	 * only returns once the link has been stable for a while, so the
+	 * state does not flicker at the edge of the radio range.
 	 */
 	bool visible;
 	int64_t ok_since;
+	int64_t rx_time;   /* uptime of the last status, -1 if none yet */
 	struct sat_status st;
 };
 
@@ -104,6 +111,7 @@ struct pad_setup {
 	int pos;                          /* label character being edited */
 	char label[PAD_LABEL_MAX + 1];    /* being edited, space padded; BACK drops it */
 	struct pad_cfg cfg;               /* draft */
+	bool is_new;                      /* the pad was OFF: a new one */
 	const char *error;                /* why the draft cannot be saved */
 };
 
@@ -113,10 +121,12 @@ struct menu_view {
 	int cursor;
 };
 
-/* Settings menu entries, top to bottom */
+/* Menu entries, top to bottom */
 enum settings_entry {
+	SETTINGS_EDIT,
 	SETTINGS_PADS,
 	SETTINGS_SATS,
+	SETTINGS_MSGS,
 	SETTINGS_DIAG,
 	SETTINGS_OFF,
 	SETTINGS_COUNT,
@@ -164,16 +174,23 @@ struct pair_view {
 /* Rows of the armed continuity table visible at once; up and down scroll */
 #define ARMED_TABLE_ROWS 5
 
+/* Messages visible at once on the messages screen */
+#define MESSAGES_ROWS 8
+
 struct ctrl_view {
 	enum ctrl_state state;
 	struct sat_view sat[NUM_SATS];
 	struct pad_view pad[NUM_PADS];
-	uint64_t selected;        /* BIT64(pad) per pad */
-	int cursor;               /* pad under the list cursor, never an OFF pad */
+	uint64_t selected;        /* ticked pads, BIT64(pad); while armed, the armed ones */
+	/* What ARM would arm now: the ticked pads, else the one under the cursor */
+	uint64_t arm_set;
+	int cursor;               /* pad under the list cursor, -1 if none is listed */
 	int table_scroll;         /* first visible row of the armed table */
-	struct menu_view settings;    /* settings menu, opened by holding OK */
-	struct menu_view pad_list;    /* all pads, from the settings menu */
-	struct pad_setup setup;       /* opened from the pad list */
+	struct menu_view settings;    /* the menu, opened by holding OK */
+	/* Channels of all satellites, from the menu; cursor: see ctrl_pads_sats() */
+	struct menu_view pad_list;
+	struct pad_setup setup;       /* from the menu or the channel list */
+	struct menu_view messages;    /* from the menu; cursor: newest shown */
 	struct sats_view sats;        /* from the settings menu */
 	struct pair_view pair;        /* opened from the satellites screen */
 	struct menu_view diag_menu;   /* from the settings menu */
@@ -201,8 +218,35 @@ void ctrl_tick(void);
 const struct ctrl_view *ctrl_view(void);
 const char *ctrl_state_name(enum ctrl_state state);
 
-/* Shown in the pad list and selectable: enabled and its satellite visible */
-bool ctrl_pad_visible(int p);
+/* In the main list: enabled, on a paired satellite */
+bool ctrl_pad_listed(int p);
+
+/*
+ * The listed pads in the main list's order: by satellite, then by
+ * igniter channel. Returns how many.
+ */
+int ctrl_list_order(int order[NUM_PADS]);
+
+/*
+ * The satellites on the Pads screen: paired ones and any that pads are
+ * set up on. Returns how many. Its cursor is index * NUM_CHANNELS + channel.
+ */
+int ctrl_pads_sats(int sats[NUM_SATS]);
+
+/* The enabled pad that uses a satellite channel, -1 if it is free */
+int ctrl_channel_pad(int sat, int ch);
+
+/* The last messages, newest first */
+#define CTRL_EVENTS 16
+
+struct ctrl_event {
+	char text[80];
+	enum msg_level level;
+	int64_t time;
+};
+
+/* The age-th most recent message (0 = the latest), NULL past the oldest */
+const struct ctrl_event *ctrl_event(int age);
 
 enum ctrl_req_type {
 	CTRL_REQ_TOGGLE_PAD,  /* arg: pad */

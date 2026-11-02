@@ -30,9 +30,17 @@ LOG_MODULE_REGISTER(controller, LOG_LEVEL_INF);
 #define UNCROWDED_PCT       55
 
 static struct ctrl_view v = {
-	.sat = {[0 ... NUM_SATS - 1] = {.ok_since = -1}},
+	.sat = {[0 ... NUM_SATS - 1] = {.ok_since = -1, .rx_time = -1}},
+	.cursor = -1,
 	.diag = DIAG_NONE,
 };
+
+/* Arming armed the pad under the cursor, not ticked ones: untick it after */
+static bool quick_armed;
+
+static struct ctrl_event events[CTRL_EVENTS];
+static int event_count;
+static int event_next;
 
 static int64_t next_tx;
 /* The last poll was a regular one: time the next from when it actually went out. */
@@ -87,6 +95,11 @@ static void message(enum msg_level level, const char *fmt, ...)
 	v.message_level = level;
 	v.message_time = k_uptime_get();
 
+	events[event_next] = (struct ctrl_event){.level = level, .time = v.message_time};
+	strcpy(events[event_next].text, v.message);
+	event_next = (event_next + 1) % CTRL_EVENTS;
+	event_count = MIN(event_count + 1, CTRL_EVENTS);
+
 	if (level != MSG_INFO) {
 		LOG_WRN("%s", v.message);
 	} else {
@@ -104,9 +117,60 @@ static void set_state(enum ctrl_state s)
 	v.fire_hold_ms = 0;
 }
 
-bool ctrl_pad_visible(int p)
+const struct ctrl_event *ctrl_event(int age)
 {
-	return pads[p].type != PAD_OFF && v.sat[pads[p].sat].visible;
+	if (age < 0 || age >= event_count) {
+		return NULL;
+	}
+	return &events[(event_next - 1 - age + CTRL_EVENTS) % CTRL_EVENTS];
+}
+
+bool ctrl_pad_listed(int p)
+{
+	return p >= 0 && p < NUM_PADS && pads[p].type != PAD_OFF && v.sat[pads[p].sat].uid != 0;
+}
+
+int ctrl_pads_sats(int sats[NUM_SATS])
+{
+	int n = 0;
+
+	for (int sat = 0; sat < NUM_SATS; sat++) {
+		bool used = v.sat[sat].uid != 0;
+
+		for (int p = 0; p < NUM_PADS && !used; p++) {
+			used = pads[p].type != PAD_OFF && pads[p].sat == sat;
+		}
+		if (used) {
+			sats[n++] = sat;
+		}
+	}
+	return n;
+}
+
+int ctrl_channel_pad(int sat, int ch)
+{
+	for (int p = 0; p < NUM_PADS; p++) {
+		if (pads[p].sat == sat && (pad_channels(&pads[p]) & BIT(ch))) {
+			return p;
+		}
+	}
+	return -1;
+}
+
+int ctrl_list_order(int order[NUM_PADS])
+{
+	int n = 0;
+
+	for (int sat = 0; sat < NUM_SATS; sat++) {
+		for (int ch = 0; ch < NUM_CHANNELS; ch++) {
+			for (int p = 0; p < NUM_PADS; p++) {
+				if (ctrl_pad_listed(p) && pads[p].sat == sat && pads[p].ign == ch) {
+					order[n++] = p;
+				}
+			}
+		}
+	}
+	return n;
 }
 
 static bool involved(int sat)
@@ -280,6 +344,10 @@ static void disarm_all(void)
 	}
 	set_all_ops(HYB_CLOSED);
 	set_state(CTRL_SAFE);
+	if (quick_armed) {
+		v.selected = 0;
+		quick_armed = false;
+	}
 	send_poll();
 }
 
@@ -319,13 +387,14 @@ static const char *pad_problem(int p)
 	return NULL;
 }
 
-static void selection_masks(uint8_t out[NUM_SATS])
+/* Per satellite, the channels of the pads in @p set */
+static void selection_masks(uint64_t set, uint8_t out[NUM_SATS])
 {
 	for (int sat = 0; sat < NUM_SATS; sat++) {
 		out[sat] = 0;
 	}
 	for (int p = 0; p < NUM_PADS; p++) {
-		if (v.selected & BIT64(p)) {
+		if (set & BIT64(p)) {
 			out[pads[p].sat] |= pad_channels(&pads[p]);
 		}
 	}
@@ -333,16 +402,24 @@ static void selection_masks(uint8_t out[NUM_SATS])
 
 static bool any_op(enum hybrid_op op);
 
+static uint64_t arm_set(void)
+{
+	if (v.selected) {
+		return v.selected;
+	}
+	return ctrl_pad_listed(v.cursor) ? BIT64(v.cursor) : 0;
+}
+
 static const char *arm_block_reason(void)
 {
 	static char buf[48];
 	uint8_t masks[NUM_SATS];
 
-	if (v.selected == 0) {
-		return "Select pads with OK";
+	if (arm_set() == 0) {
+		return "No pad to arm";
 	}
 
-	selection_masks(masks);
+	selection_masks(arm_set(), masks);
 	for (int sat = 0; sat < NUM_SATS; sat++) {
 		const struct sat_view *s = &v.sat[sat];
 
@@ -350,7 +427,7 @@ static const char *arm_block_reason(void)
 			continue;
 		}
 		if (!s->link_ok) {
-			snprintf(buf, sizeof(buf), "No link to satellite %c", sat_name(sat));
+			snprintf(buf, sizeof(buf), "Satellite %c: no link", sat_name(sat));
 			return buf;
 		}
 		if (s->st.estop) {
@@ -401,7 +478,7 @@ static void toggle_pad(int p)
 		message(MSG_WARN, "Pads are locked while armed");
 		return;
 	}
-	if (!ctrl_pad_visible(p)) {
+	if (!ctrl_pad_listed(p)) {
 		message(MSG_WARN, "%s is not available", pad_name(p));
 		return;
 	}
@@ -421,7 +498,9 @@ static void request_arm(void)
 		return;
 	}
 
-	selection_masks(arm_mask);
+	quick_armed = v.selected == 0;
+	v.selected = arm_set();
+	selection_masks(v.selected, arm_mask);
 	set_all_ops(HYB_CLOSED);
 	set_state(CTRL_ARMING);
 	for (int sat = 0; sat < NUM_SATS; sat++) {
@@ -533,32 +612,72 @@ static bool field_visible(const struct pad_cfg *cfg, int field)
 	}
 }
 
-/* Move the main list cursor by steps enabled pads, stopping at the ends */
+/* Where the cursor is in the list order, -1 if not on a listed pad */
+static int cursor_index(const int *order, int n)
+{
+	for (int i = 0; i < n; i++) {
+		if (order[i] == v.cursor) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+/* Move the main list cursor by steps pads, stopping at the ends */
 static void move_cursor(int steps)
 {
-	int dir = steps > 0 ? 1 : -1;
+	int order[NUM_PADS];
+	int n = ctrl_list_order(order);
+	int i = cursor_index(order, n);
 
-	for (int n = abs(steps); n > 0; n--) {
-		int p = v.cursor + dir;
-
-		while (p >= 0 && p < NUM_PADS && !ctrl_pad_visible(p)) {
-			p += dir;
-		}
-		if (p < 0 || p >= NUM_PADS) {
-			break;
-		}
-		v.cursor = p;
+	if (n > 0) {
+		v.cursor = order[CLAMP(i + steps, 0, n - 1)];
 	}
 }
 
-/* Keep the cursor on a visible pad after pads came or went */
+/* Left/right: to the first pad of the previous or next satellite with pads */
+static void jump_sat(int dir)
+{
+	int order[NUM_PADS];
+	int n = ctrl_list_order(order);
+	int i = cursor_index(order, n);
+	int sat;
+
+	if (i < 0) {
+		return;
+	}
+	sat = pads[order[i]].sat;
+	if (dir > 0) {
+		while (i < n && pads[order[i]].sat == sat) {
+			i++;
+		}
+		if (i < n) {
+			v.cursor = order[i];
+		}
+	} else {
+		/* Back to the start of this group, then of the one before */
+		while (i > 0 && pads[order[i - 1]].sat == sat) {
+			i--;
+		}
+		if (i > 0) {
+			sat = pads[order[i - 1]].sat;
+			i--;
+			while (i > 0 && pads[order[i - 1]].sat == sat) {
+				i--;
+			}
+		}
+		v.cursor = order[i];
+	}
+}
+
+/* Keep the cursor on a listed pad after pads came or went */
 static void fix_cursor(void)
 {
-	if (!ctrl_pad_visible(v.cursor)) {
-		move_cursor(-1);
-	}
-	if (!ctrl_pad_visible(v.cursor)) {
-		move_cursor(1);
+	int order[NUM_PADS];
+	int n = ctrl_list_order(order);
+
+	if (cursor_index(order, n) < 0) {
+		v.cursor = n > 0 ? order[0] : -1;
 	}
 }
 
@@ -576,6 +695,23 @@ static void setup_open(int pad)
 	su->error = pads_check(su->pad, &su->cfg);
 }
 
+/* A new rocket pad on a free channel, in the first unused pad slot */
+static void setup_open_new(int sat, int ch)
+{
+	struct pad_setup *su = &v.setup;
+
+	for (int p = 0; p < NUM_PADS; p++) {
+		if (pads[p].type == PAD_OFF) {
+			setup_open(p);
+			su->cfg = (struct pad_cfg){.type = PAD_ROCKET, .sat = sat, .ign = ch};
+			su->is_new = true;
+			su->error = pads_check(su->pad, &su->cfg);
+			return;
+		}
+	}
+	message(MSG_WARN, "All %d pads are in use", NUM_PADS);
+}
+
 static void setup_save(void)
 {
 	struct pad_setup *su = &v.setup;
@@ -589,9 +725,11 @@ static void setup_save(void)
 		v.selected &= ~BIT64(su->pad);
 	}
 	if (pads_store(su->pad, &su->cfg)) {
-		message(MSG_WARN, "Pad %d applied, but could not be stored", su->pad + 1);
+		message(MSG_WARN, "%s applied, but could not be stored", pad_name(su->pad));
+	} else if (su->cfg.type == PAD_OFF) {
+		message(MSG_INFO, "Pad %d switched off", su->pad + 1);
 	} else {
-		message(MSG_INFO, "Pad %d saved", su->pad + 1);
+		message(MSG_INFO, "%s saved", pad_name(su->pad));
 	}
 }
 
@@ -722,7 +860,7 @@ static void setup_handle(const struct ctrl_req *req)
 			su->mode = SETUP_FIELDS;
 		} else {
 			su->active = false;
-			message(MSG_INFO, "Pad %d setup cancelled", su->pad + 1);
+			message(MSG_INFO, "%s not changed", su->is_new ? "New pad" : pad_name(su->pad));
 		}
 		break;
 	case CTRL_REQ_BACK_LONG:
@@ -901,7 +1039,7 @@ static void sats_handle(const struct ctrl_req *req)
 	case CTRL_REQ_BACK_LONG:
 		break;
 	default:
-		message(MSG_WARN, "Leave the settings first (BACK)");
+		message(MSG_WARN, "Leave the menu first (BACK)");
 		break;
 	}
 }
@@ -909,7 +1047,7 @@ static void sats_handle(const struct ctrl_req *req)
 static void settings_open(void)
 {
 	if (v.state != CTRL_SAFE) {
-		message(MSG_WARN, "Settings are only available in SAFE");
+		message(MSG_WARN, "The menu is only available in SAFE");
 		return;
 	}
 	v.settings = (struct menu_view){.active = true};
@@ -956,7 +1094,9 @@ static void menu_move(struct menu_view *m, int steps, int count)
 	m->cursor = CLAMP(m->cursor + steps, 0, count - 1);
 }
 
-/* Settings menu */
+static void pad_list_open(void);
+
+/* The menu */
 static void settings_handle(const struct ctrl_req *req)
 {
 	switch (req->type) {
@@ -965,11 +1105,23 @@ static void settings_handle(const struct ctrl_req *req)
 		break;
 	case CTRL_REQ_SELECT:
 		switch (v.settings.cursor) {
+		case SETTINGS_EDIT:
+			if (!ctrl_pad_listed(v.cursor)) {
+				message(MSG_WARN, "No pad under the cursor");
+				break;
+			}
+			/* Straight back to the list when done */
+			settings_close();
+			setup_open(v.cursor);
+			break;
 		case SETTINGS_PADS:
-			v.pad_list = (struct menu_view){.active = true, .cursor = v.cursor};
+			pad_list_open();
 			break;
 		case SETTINGS_SATS:
 			v.sats.active = true;
+			break;
+		case SETTINGS_MSGS:
+			v.messages = (struct menu_view){.active = true};
 			break;
 		case SETTINGS_DIAG:
 			v.diag_menu = (struct menu_view){.active = true};
@@ -987,30 +1139,91 @@ static void settings_handle(const struct ctrl_req *req)
 	case CTRL_REQ_BACK_LONG:
 		break;
 	default:
-		message(MSG_WARN, "Leave the settings first (BACK)");
+		message(MSG_WARN, "Leave the menu first (BACK)");
 		break;
 	}
 }
 
-/* Pad list: all pads, OK sets one up */
+/* Channel list: starts on the channel of the pad under the main cursor */
+static void pad_list_open(void)
+{
+	int sats[NUM_SATS];
+	int n = ctrl_pads_sats(sats);
+
+	v.pad_list = (struct menu_view){.active = true};
+	for (int i = 0; i < n && ctrl_pad_listed(v.cursor); i++) {
+		if (sats[i] == pads[v.cursor].sat) {
+			v.pad_list.cursor = i * NUM_CHANNELS + pads[v.cursor].ign;
+		}
+	}
+}
+
+/* Channel list: OK sets up the pad on a channel, or a new one if it is free */
 static void pad_list_handle(const struct ctrl_req *req)
 {
+	int sats[NUM_SATS];
+	int n = ctrl_pads_sats(sats);
+	int sat;
+	int ch;
+	int p;
+
 	switch (req->type) {
 	case CTRL_REQ_CURSOR:
-		menu_move(&v.pad_list, req->arg, NUM_PADS);
+		menu_move(&v.pad_list, req->arg, MAX(n * NUM_CHANNELS, 1));
+		break;
+	case CTRL_REQ_ADJUST:
+		/* A satellite at a time, keeping the channel */
+		v.pad_list.cursor = CLAMP(v.pad_list.cursor + req->arg * NUM_CHANNELS, 0,
+					  MAX(n * NUM_CHANNELS - 1, 0));
 		break;
 	case CTRL_REQ_SELECT:
-		setup_open(v.pad_list.cursor);
+		if (n == 0) {
+			message(MSG_WARN, "Pair a satellite first");
+			break;
+		}
+		sat = sats[v.pad_list.cursor / NUM_CHANNELS];
+		ch = v.pad_list.cursor % NUM_CHANNELS;
+		p = ctrl_channel_pad(sat, ch);
+		if (p >= 0) {
+			setup_open(p);
+		} else {
+			setup_open_new(sat, ch);
+		}
 		break;
 	case CTRL_REQ_BACK:
 		v.pad_list.active = false;
 		break;
+	case CTRL_REQ_EDIT:
+	case CTRL_REQ_BACK_LONG:
+		break;
+	default:
+		message(MSG_WARN, "Leave the menu first (BACK)");
+		break;
+	}
+}
+
+/* Messages: up and down scroll through them */
+static void messages_handle(const struct ctrl_req *req)
+{
+	int count = 0;
+
+	while (ctrl_event(count)) {
+		count++;
+	}
+	switch (req->type) {
+	case CTRL_REQ_CURSOR:
+		menu_move(&v.messages, req->arg, MAX(count - MESSAGES_ROWS + 1, 1));
+		break;
+	case CTRL_REQ_BACK:
+		v.messages.active = false;
+		break;
+	case CTRL_REQ_SELECT:
 	case CTRL_REQ_ADJUST:
 	case CTRL_REQ_EDIT:
 	case CTRL_REQ_BACK_LONG:
 		break;
 	default:
-		message(MSG_WARN, "Leave the settings first (BACK)");
+		message(MSG_WARN, "Leave the menu first (BACK)");
 		break;
 	}
 }
@@ -1033,7 +1246,7 @@ static void diag_menu_handle(const struct ctrl_req *req)
 	case CTRL_REQ_BACK_LONG:
 		break;
 	default:
-		message(MSG_WARN, "Leave the settings first (BACK)");
+		message(MSG_WARN, "Leave the menu first (BACK)");
 		break;
 	}
 }
@@ -1084,6 +1297,10 @@ static void drain_requests(void)
 			pad_list_handle(&req);
 			continue;
 		}
+		if (v.messages.active) {
+			messages_handle(&req);
+			continue;
+		}
 		if (v.diag_menu.active) {
 			diag_menu_handle(&req);
 			continue;
@@ -1105,6 +1322,11 @@ static void drain_requests(void)
 				move_cursor(req.arg);
 			}
 			break;
+		case CTRL_REQ_ADJUST:
+			for (int n = abs(req.arg); n > 0 && v.state == CTRL_SAFE; n--) {
+				jump_sat(req.arg);
+			}
+			break;
 		case CTRL_REQ_SELECT:
 			toggle_pad(v.cursor);
 			break;
@@ -1115,7 +1337,11 @@ static void drain_requests(void)
 			request_arm();
 			break;
 		case CTRL_REQ_BACK:
-			request_safe("BACK pressed");
+			if (v.state == CTRL_SAFE) {
+				v.selected = 0;
+			} else {
+				request_safe("BACK pressed");
+			}
 			break;
 		case CTRL_REQ_FILL:
 			request_valve(HYB_FILLING);
@@ -1277,6 +1503,8 @@ static void tick_firing(int64_t now)
 	if (done) {
 		pads_format(list, sizeof(list), v.selected);
 		disarm_all();
+		/* Spent: they would only show open igniters now */
+		v.selected = 0;
 		message(MSG_INFO, "Launched %s, disarmed", list);
 	}
 }
@@ -1317,6 +1545,7 @@ void ctrl_tick(void)
 			want_full[sat] = true;
 		}
 		s->have_status = rx >= 0;
+		s->rx_time = rx;
 		s->link_ok = s->have_status && now - rx < LINK_TIMEOUT_MS;
 
 		if (!s->link_ok) {
@@ -1334,12 +1563,14 @@ void ctrl_tick(void)
 	}
 
 	/*
-	 * Pads of a lost satellite leave the selection, so they come back
-	 * unselected. While armed, losing a satellite is a fault instead.
+	 * Ticked pads stay ticked while their satellite's link is gone, and
+	 * arming says why it cannot; only pads that leave the list (switched
+	 * off, satellite forgotten) are unticked. While armed, losing a
+	 * satellite is a fault instead.
 	 */
 	if (v.state == CTRL_SAFE) {
 		for (int p = 0; p < NUM_PADS; p++) {
-			if (!ctrl_pad_visible(p)) {
+			if (!ctrl_pad_listed(p)) {
 				v.selected &= ~BIT64(p);
 			}
 		}
@@ -1369,6 +1600,7 @@ void ctrl_tick(void)
 		break;
 	}
 
+	v.arm_set = v.state == CTRL_SAFE ? arm_set() : v.selected;
 	v.arm_block = v.state == CTRL_SAFE ? arm_block_reason() : NULL;
 	if (v.state != CTRL_ARMED) {
 		v.launch_block = NULL;

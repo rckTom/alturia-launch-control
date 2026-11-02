@@ -6,11 +6,11 @@
  * Every screen is a full-screen view, built once at start-up. Each one is
  * described and drawn in its own file under ui/:
  *
- *   list.c     SAFE and ARMING: the usable pads and the satellites
+ *   list.c     SAFE and ARMING: the pads, grouped by satellite
  *   armed.c    ARMED: continuity table, valves, fire hold
  *   launch.c   FIRING: a rocket leaving the pad
- *   menu.c     the settings and diagnostics menus
- *   pads.c     pad list and pad setup
+ *   menu.c     the menu, the diagnostics menu and the messages
+ *   pads.c     channel list and pad setup
  *   sats.c     satellites and pairing
  *   diag.c     button test and battery report
  *   dialogs.c  fault, power off and the splash
@@ -29,14 +29,17 @@
 #include "ui/views.h"
 #include "ui/widgets.h"
 
-#define MESSAGE_SHOW_MS 5000
-#define SPLASH_MS       1500
+/* How long an event stays up: progress briefly, refusals a bit longer */
+#define INFO_SHOW_MS 4000
+#define WARN_SHOW_MS 6000
+#define SPLASH_MS    1500
 
 static int64_t splash_until;
 
 bool ui_message_recent(const struct ctrl_view *v, int64_t now)
 {
-	return v->message[0] && now - v->message_time < MESSAGE_SHOW_MS;
+	return v->message[0] &&
+	       now - v->message_time < (v->message_level == MSG_INFO ? INFO_SHOW_MS : WARN_SHOW_MS);
 }
 
 void ui_set_message(lv_obj_t *label, const struct ctrl_view *v)
@@ -105,6 +108,9 @@ static lv_obj_t *current_view(const struct ctrl_view *v, int64_t now)
 	}
 	if (v->pad_list.active) {
 		return ui_padlist_refresh(v);
+	}
+	if (v->messages.active) {
+		return ui_messages_refresh(v, now);
 	}
 	if (v->diag_menu.active) {
 		return ui_diag_menu_refresh(v);

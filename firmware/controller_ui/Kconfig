@@ -15,6 +15,16 @@ config APP_KEY_SWITCH
 	  must be on to arm. Without one, ARM alone arms; the satellites'
 	  pad keys still have to be on.
 
+config APP_PREARM_CONTINUITY
+	bool "Satellites report continuity while disarmed"
+	default APP_SAT_SIM
+	help
+	  The satellites' continuity readings are real before arming, so the
+	  main list shows them. Without it the list shows "?" until the
+	  pads are armed, and continuity is only judged from the armed
+	  readings. The simulated satellites model it; the satellite
+	  firmware does not measure through V_TEST while disarmed yet.
+
 config APP_POLL_PERIOD_MS
 	int "Heartbeat poll period in milliseconds"
 	default 1200

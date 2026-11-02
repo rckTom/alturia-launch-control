@@ -14,10 +14,6 @@
 
 #include "controller.h"
 
-/* Rows of both pad lists: the main list and the one in the settings */
-#define PAD_ROW_Y0 31
-#define PAD_ROW_H  24
-
 /* The latest event, for a few seconds after it happened */
 bool ui_message_recent(const struct ctrl_view *v, int64_t now);
 void ui_set_message(lv_obj_t *label, const struct ctrl_view *v);
@@ -39,6 +35,7 @@ void ui_launch_reset(void);
 void ui_menus_create(lv_obj_t *scr);
 lv_obj_t *ui_settings_refresh(const struct ctrl_view *v);
 lv_obj_t *ui_diag_menu_refresh(const struct ctrl_view *v);
+lv_obj_t *ui_messages_refresh(const struct ctrl_view *v, int64_t now);
 
 /* pads.c */
 void ui_pads_create(lv_obj_t *scr);

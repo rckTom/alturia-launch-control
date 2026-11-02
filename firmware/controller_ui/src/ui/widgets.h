@@ -23,6 +23,14 @@
 #define ROW_X        18   /* list rows start here... */
 #define CURSOR_X     3    /* ...and the cursor sits left of them */
 
+/* Scrolling lists: rows under the title, a rule and a line of help below */
+#define LIST_Y0      31
+#define LIST_ROW_H   22
+#define LIST_ROWS    8
+#define LIST_H       (LIST_ROWS * LIST_ROW_H)
+#define LIST_RULE_Y  (LIST_Y0 + LIST_H + 4)
+#define LIST_ROW_W   386   /* leaves room for the scroll bar */
+
 /*
  * Every box is opaque white with black text; ui_set_inverted() makes it
  * black with white text. These are added on top where a box needs more.
@@ -45,6 +53,17 @@ void ui_rule(lv_obj_t *parent, int32_t y);
 lv_obj_t *ui_title(lv_obj_t *view, const char *text);
 lv_obj_t *ui_footer(lv_obj_t *view, int32_t rule_y, const char *text);
 lv_obj_t *ui_cursor(lv_obj_t *view);
+
+/*
+ * Lists longer than the screen. ui_scroll() returns the first row to show,
+ * moved from @p first only as far as needed to show rows @p top (a header
+ * that belongs to the cursor, or the cursor itself) to @p cursor.
+ * The scroll bar is a thin bar at the right edge, as long as the share of
+ * the list on screen; hidden while everything fits.
+ */
+int ui_scroll(int first, int top, int cursor, int count, int rows);
+lv_obj_t *ui_scrollbar(lv_obj_t *view, int32_t y, int32_t h);
+void ui_scrollbar_set(lv_obj_t *bar, int32_t y, int32_t h, int first, int count, int rows);
 
 /* A full-screen view. ui_show_only() shows one and hides all others. */
 lv_obj_t *ui_view(lv_obj_t *scr, bool inverted);
