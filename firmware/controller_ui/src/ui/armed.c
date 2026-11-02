@@ -228,7 +228,10 @@ lv_obj_t *ui_armed_refresh(const struct ctrl_view *v, int64_t now)
 
 	refresh_table(v, order, n, now);
 
-	if (v->launch_block) {
+	if (ui_message_recent(v, now)) {
+		/* A refused button, or a valve change that went wrong */
+		ui_set_message(hint, v);
+	} else if (v->launch_block) {
 		ui_set_text_fmt(hint, LV_SYMBOL_WARNING " %s  -  BACK disarms", v->launch_block);
 	} else if (v->arm_timer_paused) {
 		ui_set_text(hint, "Arm timer paused while filling  -  BACK disarms");

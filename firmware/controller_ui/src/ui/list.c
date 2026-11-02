@@ -10,10 +10,8 @@
  *  |     Pad 3    RKT  CH2                #OPEN#    |
  *  | B  12.1V                       #NO LINK 12s#   |
  *  | #   Pad 6    RKT  CH1                   --     |  # in front: ticked
- *  |       +--------------------------------+       |
- *  |       | ! Satellite B disconnected     |       |  latest event, a while
- *  |-------+--------------------------------+-------|
- *  | ARM: arm ALFA   OK: tick       hold OK: menu   |  hint, always there
+ *  |------------------------------------------------|
+ *  | ARM: arm ALFA   OK: tick       hold OK: menu   |  hint, or a message
  *  +------------------------------------------------+
  *
  * The cursor is the inverted row; a small square in front of a pad marks
@@ -21,6 +19,11 @@
  * they show "--" and arming them is refused with the reason in the hint.
  * When the list is longer than the screen, it scrolls with the cursor and
  * a bar on the right shows where it is.
+ *
+ * A message the operator has to see (a refused button, a launch, an arm
+ * timeout) takes the hint line for a few seconds. Everything the screen
+ * shows anyway, like a satellite's link going, is only logged; the menu's
+ * Messages screen lists both.
  *
  * Before arming the satellites only check their outputs for shorts; the
  * continuity column shows "?" unless CONFIG_APP_PREARM_CONTINUITY says
@@ -87,8 +90,6 @@ static lv_obj_t *sats_text;
 static struct row rows[LIST_ROWS];
 static lv_obj_t *scroll_thumb;
 static lv_obj_t *empty;
-static lv_obj_t *toast;
-static lv_obj_t *toast_text;
 static lv_obj_t *hint;
 static lv_obj_t *hint_menu;
 
@@ -208,12 +209,6 @@ void ui_list_create(lv_obj_t *scr)
 	lv_obj_set_pos(hint, MARGIN, HINT_RULE_Y + 6);
 	hint_menu = ui_text_line(view, FONT_SMALL, 116, LV_TEXT_ALIGN_RIGHT);
 	lv_obj_set_pos(hint_menu, SCREEN_W - MARGIN - 116, HINT_RULE_Y + 6);
-
-	/* Over the list, so created last */
-	toast = ui_box(view, 20, 0, SCREEN_W - 40, 28);
-	lv_obj_add_style(toast, &ui_style_frame, 0);
-	toast_text = ui_text_line(toast, FONT_SMALL, SCREEN_W - 56, LV_TEXT_ALIGN_CENTER);
-	lv_obj_center(toast_text);
 }
 
 static void refresh_battery(void)
@@ -419,10 +414,19 @@ static void refresh_rows(const struct ctrl_view *v, const struct entry *e, int c
 	ui_scrollbar_set(scroll_thumb, LIST_Y0, LIST_H, first_entry, count, LIST_ROWS);
 }
 
-/* What the buttons do now, or why ARM would not */
-static void refresh_hint(const struct ctrl_view *v, int paired, int listed)
+/* What the buttons do now, or why ARM would not; or the latest message */
+static void refresh_hint(const struct ctrl_view *v, int64_t now, int paired, int listed)
 {
+	bool msg = ui_message_recent(v, now);
 	char list[32];
+
+	/* A message gets the whole line */
+	lv_obj_set_width(hint, msg ? SCREEN_W - 2 * MARGIN : 268);
+	ui_set_visible(hint_menu, !msg);
+	if (msg) {
+		ui_set_message(hint, v);
+		return;
+	}
 
 	/* With pads ticked, how to clear them matters more than the menu */
 	ui_set_text(hint_menu, v->state != CTRL_SAFE ? ""
@@ -443,19 +447,6 @@ static void refresh_hint(const struct ctrl_view *v, int paired, int listed)
 	} else {
 		pads_format(list, sizeof(list), v->arm_set);
 		ui_set_text_fmt(hint, "ARM: arm %s   OK: tick", list);
-	}
-}
-
-/* The latest event, over the list but never over the cursor */
-static void refresh_toast(const struct ctrl_view *v, int64_t now, int cursor_entry)
-{
-	bool show = ui_message_recent(v, now);
-	bool cursor_low = cursor_entry >= 0 && cursor_entry - first_entry >= LIST_ROWS - 2;
-
-	ui_set_visible(toast, show);
-	if (show) {
-		lv_obj_set_y(toast, cursor_low ? LIST_Y0 + 2 : HINT_RULE_Y - 32);
-		ui_set_message(toast_text, v);
 	}
 }
 
@@ -485,7 +476,6 @@ lv_obj_t *ui_list_refresh(const struct ctrl_view *v, int64_t now)
 	ui_set_visible(empty, !paired);
 	ui_set_text(empty, "Hold OK and pair a satellite");
 
-	refresh_hint(v, paired, listed);
-	refresh_toast(v, now, cursor_entry);
+	refresh_hint(v, now, paired, listed);
 	return view;
 }

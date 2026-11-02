@@ -85,26 +85,50 @@ const char *ctrl_state_name(enum ctrl_state state)
 	return "?";
 }
 
-static void message(enum msg_level level, const char *fmt, ...)
+/* Into the log of the last events, and the system log */
+static const struct ctrl_event *log_event(enum msg_level level, const char *fmt, va_list ap)
 {
-	va_list ap;
+	struct ctrl_event *e = &events[event_next];
 
-	va_start(ap, fmt);
-	vsnprintf(v.message, sizeof(v.message), fmt, ap);
-	va_end(ap);
-	v.message_level = level;
-	v.message_time = k_uptime_get();
-
-	events[event_next] = (struct ctrl_event){.level = level, .time = v.message_time};
-	strcpy(events[event_next].text, v.message);
+	*e = (struct ctrl_event){.level = level, .time = k_uptime_get()};
+	vsnprintf(e->text, sizeof(e->text), fmt, ap);
 	event_next = (event_next + 1) % CTRL_EVENTS;
 	event_count = MIN(event_count + 1, CTRL_EVENTS);
 
 	if (level != MSG_INFO) {
-		LOG_WRN("%s", v.message);
+		LOG_WRN("%s", e->text);
 	} else {
-		LOG_INF("%s", v.message);
+		LOG_INF("%s", e->text);
 	}
+	return e;
+}
+
+/*
+ * Something the operator has to be told: shown for a few seconds (a fault
+ * until acknowledged) and logged.
+ */
+static void message(enum msg_level level, const char *fmt, ...)
+{
+	const struct ctrl_event *e;
+	va_list ap;
+
+	va_start(ap, fmt);
+	e = log_event(level, fmt, ap);
+	va_end(ap);
+
+	strcpy(v.message, e->text);
+	v.message_level = level;
+	v.message_time = e->time;
+}
+
+/* Something the screen already shows (a link state, ARMED): only logged */
+static void note(enum msg_level level, const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	(void)log_event(level, fmt, ap);
+	va_end(ap);
 }
 
 static void set_state(enum ctrl_state s)
@@ -490,7 +514,7 @@ static void request_arm(void)
 	}
 	block = arm_block_reason();
 	if (block != NULL) {
-		message(MSG_WARN, "Cannot arm: %s", block);
+		note(MSG_WARN, "Cannot arm: %s", block);
 		return;
 	}
 
@@ -507,7 +531,7 @@ static void request_arm(void)
 	}
 	send_poll();
 	ack_deadline = k_uptime_get() + ARM_ACK_TIMEOUT_MS;
-	message(MSG_INFO, "Arming...");
+	note(MSG_INFO, "Arming...");
 }
 
 static void request_safe(const char *why)
@@ -560,13 +584,12 @@ static void request_valve(enum hybrid_op op)
 	pads_format(list, sizeof(list), hybrids);
 	if (any_op(op)) {
 		set_all_ops(HYB_CLOSED);
-		message(MSG_INFO, "%s closed: %s", name, list);
+		note(MSG_INFO, "%s closed: %s", name, list);
 	} else {
 		if (op == HYB_VENTING && any_op(HYB_FILLING)) {
-			message(MSG_INFO, "Fill aborted, venting %s", list);
+			note(MSG_INFO, "Fill aborted, venting %s", list);
 		} else {
-			message(MSG_INFO, "%s %s", op == HYB_FILLING ? "Filling" : "Venting",
-				list);
+			note(MSG_INFO, "%s %s", op == HYB_FILLING ? "Filling" : "Venting", list);
 		}
 		for (int p = 0; p < NUM_PADS; p++) {
 			if (hybrids & BIT64(p)) {
@@ -898,7 +921,7 @@ static void pair_open(int sat)
 		.sat = sat,
 	};
 	link_scan(true);
-	message(MSG_INFO, "Hold the pairing button on the satellite for 5 s");
+	note(MSG_INFO, "Hold the pairing button on the satellite for 5 s");
 }
 
 static void pair_close(void)
@@ -1247,106 +1270,122 @@ static void diag_menu_handle(const struct ctrl_req *req)
 	}
 }
 
+/* One button press or shell request, given to whatever is open */
+static void handle_request(const struct ctrl_req *req)
+{
+	if (v.powering_off) {
+		return;
+	}
+	if (v.power_confirm) {
+		power_handle(req);
+		return;
+	}
+	if (req->type == CTRL_REQ_POWER) {
+		power_ask();
+		return;
+	}
+	if (v.fault_active) {
+		if (req->type == CTRL_REQ_BACK) {
+			v.fault_active = false;
+			note(MSG_INFO, "Fault acknowledged");
+		}
+		return;
+	}
+	/* The button test takes every button, so only holding BACK leaves it */
+	if (v.diag != DIAG_NONE) {
+		if (req->type == (v.diag == DIAG_BUTTONS ? CTRL_REQ_BACK_LONG : CTRL_REQ_BACK)) {
+			v.diag = DIAG_NONE;
+		}
+		return;
+	}
+	if (v.pair.active) {
+		pair_handle(req);
+		return;
+	}
+	if (v.sats.active) {
+		sats_handle(req);
+		return;
+	}
+	if (v.setup.active) {
+		setup_handle(req);
+		return;
+	}
+	if (v.pad_list.active) {
+		pad_list_handle(req);
+		return;
+	}
+	if (v.messages.active) {
+		messages_handle(req);
+		return;
+	}
+	if (v.diag_menu.active) {
+		diag_menu_handle(req);
+		return;
+	}
+	if (v.settings.active) {
+		settings_handle(req);
+		return;
+	}
+	switch (req->type) {
+	case CTRL_REQ_TOGGLE_PAD:
+		toggle_pad(req->arg);
+		break;
+	case CTRL_REQ_CURSOR:
+		if (v.state == CTRL_ARMED) {
+			int max = __builtin_popcountll(v.selected) - ARMED_TABLE_ROWS;
+
+			v.table_scroll = CLAMP(v.table_scroll + req->arg, 0, MAX(max, 0));
+		} else {
+			move_cursor(req->arg);
+		}
+		break;
+	case CTRL_REQ_ADJUST:
+		for (int n = abs(req->arg); n > 0 && v.state == CTRL_SAFE; n--) {
+			jump_sat(req->arg);
+		}
+		break;
+	case CTRL_REQ_SELECT:
+		toggle_pad(v.cursor);
+		break;
+	case CTRL_REQ_EDIT:
+		settings_open();
+		break;
+	case CTRL_REQ_ARM:
+		request_arm();
+		break;
+	case CTRL_REQ_BACK:
+		if (v.state == CTRL_SAFE) {
+			v.selected = 0;
+		} else {
+			request_safe("BACK pressed");
+		}
+		break;
+	case CTRL_REQ_FILL:
+		request_valve(HYB_FILLING);
+		break;
+	case CTRL_REQ_VENT:
+		request_valve(HYB_VENTING);
+		break;
+	default:
+		break;
+	}
+}
+
 static void drain_requests(void)
 {
 	struct ctrl_req req;
 
 	while (k_msgq_get(&req_q, &req, K_NO_WAIT) == 0) {
-		if (v.powering_off) {
-			continue;
-		}
-		if (v.power_confirm) {
-			power_handle(&req);
-			continue;
-		}
-		if (req.type == CTRL_REQ_POWER) {
-			power_ask();
-			continue;
-		}
-		if (v.fault_active) {
-			if (req.type == CTRL_REQ_BACK) {
-				v.fault_active = false;
-				message(MSG_INFO, "Fault acknowledged");
-			}
-			continue;
-		}
-		/* The button test takes every button, so only holding BACK leaves it */
-		if (v.diag != DIAG_NONE) {
-			if (req.type == (v.diag == DIAG_BUTTONS ? CTRL_REQ_BACK_LONG : CTRL_REQ_BACK)) {
-				v.diag = DIAG_NONE;
-			}
-			continue;
-		}
-		if (v.pair.active) {
-			pair_handle(&req);
-			continue;
-		}
-		if (v.sats.active) {
-			sats_handle(&req);
-			continue;
-		}
-		if (v.setup.active) {
-			setup_handle(&req);
-			continue;
-		}
-		if (v.pad_list.active) {
-			pad_list_handle(&req);
-			continue;
-		}
-		if (v.messages.active) {
-			messages_handle(&req);
-			continue;
-		}
-		if (v.diag_menu.active) {
-			diag_menu_handle(&req);
-			continue;
-		}
-		if (v.settings.active) {
-			settings_handle(&req);
-			continue;
-		}
-		switch (req.type) {
-		case CTRL_REQ_TOGGLE_PAD:
-			toggle_pad(req.arg);
-			break;
-		case CTRL_REQ_CURSOR:
-			if (v.state == CTRL_ARMED) {
-				int max = __builtin_popcountll(v.selected) - ARMED_TABLE_ROWS;
+		int64_t shown = v.message_time;
 
-				v.table_scroll = CLAMP(v.table_scroll + req.arg, 0, MAX(max, 0));
-			} else {
-				move_cursor(req.arg);
-			}
-			break;
-		case CTRL_REQ_ADJUST:
-			for (int n = abs(req.arg); n > 0 && v.state == CTRL_SAFE; n--) {
-				jump_sat(req.arg);
-			}
-			break;
-		case CTRL_REQ_SELECT:
-			toggle_pad(v.cursor);
-			break;
-		case CTRL_REQ_EDIT:
-			settings_open();
-			break;
-		case CTRL_REQ_ARM:
-			request_arm();
-			break;
-		case CTRL_REQ_BACK:
-			if (v.state == CTRL_SAFE) {
-				v.selected = 0;
-			} else {
-				request_safe("BACK pressed");
-			}
-			break;
-		case CTRL_REQ_FILL:
-			request_valve(HYB_FILLING);
-			break;
-		case CTRL_REQ_VENT:
-			request_valve(HYB_VENTING);
-			break;
-		default:
-			break;
+		handle_request(&req);
+		/*
+		 * The next button takes a message away, unless it caused a new
+		 * one: the hint it covers says what ARM would arm. A fault
+		 * stays until acknowledged.
+		 */
+		if (v.message_time == shown && !v.fault_active) {
+			v.message[0] = '\0';
 		}
 	}
 }
@@ -1386,7 +1425,7 @@ static void tick_arming(int64_t now)
 		arm_deadline = now + ARM_TIMEOUT_MS;
 		v.table_scroll = 0;
 		set_state(CTRL_ARMED);
-		message(MSG_INFO, "ARMED");
+		note(MSG_INFO, "ARMED");
 	}
 }
 
@@ -1419,7 +1458,7 @@ static void start_fire(int64_t now)
 	ack_deadline = now + FIRE_ACK_TIMEOUT_MS;
 	set_state(CTRL_FIRING);
 	pads_format(list, sizeof(list), v.selected);
-	message(MSG_INFO, "LAUNCH %s", list);
+	note(MSG_INFO, "LAUNCH %s", list);
 }
 
 static void tick_armed(int64_t now)
@@ -1457,7 +1496,7 @@ static void tick_armed(int64_t now)
 
 	v.launch_block = launch_block_reason();
 	if (fire_held && !fire_was_held && v.launch_block) {
-		message(MSG_WARN, "Cannot launch: %s", v.launch_block);
+		note(MSG_WARN, "Cannot launch: %s", v.launch_block);
 	}
 	fire_was_held = fire_held;
 
@@ -1513,10 +1552,10 @@ static void update_channel(void)
 	if (!v.channel_crowded && v.channel_util >= CROWDED_PCT) {
 		v.channel_crowded = true;
 		if (v.other_nets) {
-			message(MSG_WARN, "Channel crowded: %u%% busy, %u other network%s",
-				v.channel_util, v.other_nets, v.other_nets == 1 ? "" : "s");
+			note(MSG_WARN, "Channel crowded: %u%% busy, %u other network%s",
+			     v.channel_util, v.other_nets, v.other_nets == 1 ? "" : "s");
 		} else {
-			message(MSG_WARN, "Channel crowded: %u%% busy", v.channel_util);
+			note(MSG_WARN, "Channel crowded: %u%% busy", v.channel_util);
 		}
 	} else if (v.channel_crowded && v.channel_util < UNCROWDED_PCT) {
 		v.channel_crowded = false;
@@ -1548,13 +1587,13 @@ void ctrl_tick(void)
 			s->ok_since = -1;
 			if (s->visible) {
 				s->visible = false;
-				message(MSG_WARN, "Satellite %c disconnected", sat_name(sat));
+				note(MSG_WARN, "Satellite %c disconnected", sat_name(sat));
 			}
 		} else if (s->ok_since < 0) {
 			s->ok_since = now;
 		} else if (!s->visible && now - s->ok_since >= LINK_STABLE_MS) {
 			s->visible = true;
-			message(MSG_INFO, "Satellite %c connected", sat_name(sat));
+			note(MSG_INFO, "Satellite %c connected", sat_name(sat));
 		}
 	}
 
