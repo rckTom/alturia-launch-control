@@ -3,7 +3,7 @@
  *
  * One thread runs all satellites. Each behaves like the pad box described
  * in design/satellite.md closely enough to exercise the controller:
- * link loss, pad key switch, E-STOP, heartbeat timeout, continuity
+ * link loss, pad key switch, heartbeat timeout, continuity
  * readings, fire pulses, igniters burning open, and valve outputs that are
  * only powered while armed.
  *
@@ -387,10 +387,8 @@ static void handle_cmd(int sat, const struct link_cmd *cmd, int64_t now)
 			if (st->state != SAT_SAFE) {
 				break;
 			}
-			if (!st->key_armed || st->estop) {
-				LOG_WRN("sat %c: ARM refused, pad key %s, E-STOP %s", sat_name(sat),
-					st->key_armed ? "armed" : "safe",
-					st->estop ? "pressed" : "released");
+			if (!st->key_armed) {
+				LOG_WRN("sat %c: ARM refused, pad key safe", sat_name(sat));
 				return;
 			}
 			/*
@@ -521,8 +519,6 @@ static void sat_tick(int sat, int64_t now_us, int64_t *next_us)
 	if (st->state != SAT_SAFE) {
 		if (!st->key_armed) {
 			go_safe(sat, "pad key turned to SAFE");
-		} else if (st->estop) {
-			go_safe(sat, "E-STOP");
 		} else if (now - s->last_heartbeat > LINK_SAT_SAFE_TIMEOUT_MS) {
 			go_safe(sat, "heartbeat lost");
 		}
@@ -772,13 +768,6 @@ void sat_sim_set_key(int sat, bool armed)
 	k_mutex_unlock(&lock);
 }
 
-void sat_sim_set_estop(int sat, bool pressed)
-{
-	k_mutex_lock(&lock, K_FOREVER);
-	sims[sat].st.estop = pressed;
-	k_mutex_unlock(&lock);
-}
-
 void sat_sim_set_res(int sat, int ch, int32_t mohm)
 {
 	k_mutex_lock(&lock, K_FOREVER);
@@ -799,10 +788,9 @@ void sat_sim_print(int sat, void (*print)(const char *fmt, ...))
 	const struct sim *s = &sims[sat];
 
 	k_mutex_lock(&lock, K_FOREVER);
-	print("sat %c: %s, pad key %s, E-STOP %s, link %s, loss %d %%\n", sat_name(sat),
+	print("sat %c: %s, pad key %s, link %s, loss %d %%\n", sat_name(sat),
 	      state_names[s->st.state], s->st.key_armed ? "ARM" : "SAFE",
-	      s->st.estop ? "pressed" : "released", s->link_up ? "up" : "down",
-	      s->loss_pct);
+	      s->link_up ? "up" : "down", s->loss_pct);
 	print("  %s, %s%s, uid %016llx\n", lsec_sat_paired(&s->lsec) ? "paired" : "not paired",
 	      lsec_sat_joined(&s->lsec) ? "joined" : "no session",
 	      lsec_sat_pairing_active(&s->lsec) ? ", pairing mode" : "", s->lsec.uid);

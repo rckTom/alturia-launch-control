@@ -430,10 +430,6 @@ static const char *arm_block_reason(void)
 			snprintf(buf, sizeof(buf), "Satellite %c: no link", sat_name(sat));
 			return buf;
 		}
-		if (s->st.estop) {
-			snprintf(buf, sizeof(buf), "Satellite %c: E-STOP pressed", sat_name(sat));
-			return buf;
-		}
 		if (!s->st.key_armed) {
 			snprintf(buf, sizeof(buf), "Satellite %c: pad key in SAFE", sat_name(sat));
 			return buf;
@@ -1439,7 +1435,7 @@ static void tick_armed(int64_t now)
 			return;
 		}
 		if (v.sat[sat].st.state == SAT_SAFE) {
-			fault("Satellite %c dropped arm (pad key, E-STOP or heartbeat)", sat);
+			fault("Satellite %c dropped arm (pad key or heartbeat)", sat);
 			return;
 		}
 	}

@@ -42,7 +42,6 @@ struct sat_status {
 	uint32_t seq;
 	enum sat_state state;
 	bool key_armed;       /* pad key switch in ARM position */
-	bool estop;           /* pad E-STOP pressed */
 	uint8_t armed_mask;   /* channels the satellite accepted for arming */
 	uint8_t firing_mask;  /* channels currently driven by a fire pulse */
 	uint8_t valve_mask;   /* channels continuously energized (valves) */

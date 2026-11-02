@@ -10,8 +10,7 @@
  * That is what makes it safe to repeat FIRE.
  *
  * Provisional, until the board and its maths exist:
- *   - there are no pad key or E-STOP inputs yet, so the status reports the
- *     key in ARM and no E-STOP;
+ *   - there is no pad key input yet, so the status reports the key in ARM;
  *   - continuity is the ADC reading taken as CONT_MOHM_PER_MV mOhm per mV.
  */
 
@@ -173,7 +172,6 @@ static size_t build_status(bool full, uint8_t *out)
 	st.seq++;
 	st.state = channels_pulsing() ? SAT_FIRING : armed ? SAT_ARMED : SAT_SAFE;
 	st.key_armed = true;   /* no pad key input yet */
-	st.estop = false;      /* no E-STOP input yet */
 	st.armed_mask = armed;
 	st.firing_mask = channels_pulsing();
 	st.valve_mask = channels_valve_mask();

@@ -17,7 +17,6 @@ static struct sat_status sample(void)
 		.seq = 1234,
 		.state = SAT_ARMED,
 		.key_armed = true,
-		.estop = false,
 		.armed_mask = 0x05,
 		.firing_mask = 0x01,
 		.valve_mask = 0x04,
@@ -40,7 +39,6 @@ static void assert_short_fields(const struct sat_status *got, const struct sat_s
 	zassert_equal(got->seq, want->seq);
 	zassert_equal(got->state, want->state);
 	zassert_equal(got->key_armed, want->key_armed);
-	zassert_equal(got->estop, want->estop);
 	zassert_equal(got->armed_mask, want->armed_mask);
 	zassert_equal(got->firing_mask, want->firing_mask);
 	zassert_equal(got->valve_mask, want->valve_mask);

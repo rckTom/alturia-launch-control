@@ -468,7 +468,6 @@ static int cmd_sat_unpair(const struct shell *sh, size_t argc, char **argv)
 
 DEFINE_SAT_BOOL(link, sat_sim_set_link)
 DEFINE_SAT_BOOL(key, sat_sim_set_key)
-DEFINE_SAT_BOOL(estop, sat_sim_set_estop)
 
 static int cmd_sat_loss(const struct shell *sh, size_t argc, char **argv)
 {
@@ -516,7 +515,6 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sat_cmds,
 	SHELL_CMD_ARG(link, NULL, "Radio link <a-h> <on|off>", cmd_sat_link, 3, 0),
 	SHELL_CMD_ARG(loss, NULL, "Packet loss <a-h> <percent>", cmd_sat_loss, 3, 0),
 	SHELL_CMD_ARG(key, NULL, "Pad key switch <a-h> <arm|safe>", cmd_sat_key, 3, 0),
-	SHELL_CMD_ARG(estop, NULL, "Pad E-STOP <a-h> <on|off>", cmd_sat_estop, 3, 0),
 	SHELL_CMD_ARG(res, NULL, "Channel load <a-h> <1-6> <mOhm|open>", cmd_sat_res, 4, 0),
 	SHELL_CMD_ARG(vbat, NULL, "Pack voltage <a-h> <mV>", cmd_sat_vbat, 3, 0),
 	SHELL_CMD_ARG(pair, NULL, "Pairing gesture: enter pairing mode <a-h>", cmd_sat_pair, 2, 0),

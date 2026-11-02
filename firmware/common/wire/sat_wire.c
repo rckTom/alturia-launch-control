@@ -72,7 +72,8 @@ size_t wire_encode_status(const struct sat_status *st, bool full, uint8_t *out)
 	sys_put_le16((uint16_t)st->seq, p);
 	p += 2;
 	*p++ = st->state;
-	*p++ = (st->key_armed ? BIT(0) : 0) | (st->estop ? BIT(1) : 0);
+	/* Bit 1 was an E-STOP that the satellite does not have; keep it clear */
+	*p++ = st->key_armed ? BIT(0) : 0;
 	*p++ = st->armed_mask;
 	*p++ = st->firing_mask;
 	*p++ = st->valve_mask;
@@ -124,8 +125,7 @@ int wire_decode_status(const uint8_t *buf, size_t len, struct sat_status *st)
 	p += 2;
 	st->seq += (int16_t)(seq - (uint16_t)st->seq);
 	st->state = *p++;
-	st->key_armed = *p & BIT(0);
-	st->estop = *p++ & BIT(1);
+	st->key_armed = *p++ & BIT(0);
 	st->armed_mask = *p++;
 	st->firing_mask = *p++;
 	st->valve_mask = *p++;

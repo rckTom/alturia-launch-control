@@ -343,8 +343,6 @@ static void refresh_sat_row(const struct row *r, const struct sat_view *s, int s
 		} else {
 			ui_set_text(r->flag, "NO LINK");
 		}
-	} else if (s->st.estop) {
-		ui_set_text(r->flag, "E-STOP");
 	} else if (low) {
 		ui_set_text(r->flag, "BATTERY LOW");
 	} else {
