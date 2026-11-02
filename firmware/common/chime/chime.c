@@ -4,6 +4,8 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/buzzer.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/pm/policy.h>
+#include <zephyr/sys/atomic.h>
 
 #include "chime.h"
 
@@ -35,6 +37,8 @@ static const struct note error[] = {
 static const struct note *tune;
 static size_t tune_len;
 static size_t tune_pos;
+/* A tune holds off low-power states, which would stop the PWM's clock */
+static atomic_t playing;
 
 static void chime_step(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(chime_work, chime_step);
@@ -44,6 +48,9 @@ static void chime_step(struct k_work *work)
 	const struct note *n;
 
 	if (tune_pos >= tune_len) {
+		if (atomic_cas(&playing, 1, 0)) {
+			pm_policy_state_all_lock_put();
+		}
 		return;
 	}
 
@@ -60,6 +67,9 @@ static void chime_play(const struct note *notes, size_t len)
 	}
 
 	(void)buzzer_set_volume(buzzer, BUZZER_VOLUME_MAX);
+	if (atomic_cas(&playing, 0, 1)) {
+		pm_policy_state_all_lock_get();
+	}
 	tune = notes;
 	tune_len = len;
 	tune_pos = 0;

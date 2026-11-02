@@ -55,10 +55,15 @@ int main(void)
 
 	LOG_INF("launch controller UI running");
 
+	/*
+	 * Sleep until LVGL's next timer: the controller tick, or a redraw.
+	 * Requests posted in between wait for the tick anyway, so waking more
+	 * often would only cost battery.
+	 */
 	while (true) {
 		uint32_t sleep_ms = lv_timer_handler();
 
-		k_msleep(MIN(sleep_ms, 10U));
+		k_msleep(MIN(sleep_ms, CTRL_PERIOD_MS));
 	}
 	return 0;
 }

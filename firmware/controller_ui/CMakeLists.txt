@@ -16,6 +16,15 @@ target_sources(app PRIVATE
 	src/controller.c
 	src/pads.c
 	src/ui.c
+	src/ui/widgets.c
+	src/ui/list.c
+	src/ui/armed.c
+	src/ui/launch.c
+	src/ui/menu.c
+	src/ui/pads.c
+	src/ui/sats.c
+	src/ui/diag.c
+	src/ui/dialogs.c
 	src/inputs.c
 	src/power.c
 	src/battery.c
@@ -26,6 +35,8 @@ target_sources(app PRIVATE
 	src/fonts/ui_font_28.c
 	src/logo/ui_logo.c
 )
+# The views in src/ui include the app's headers from src
+target_include_directories(app PRIVATE src)
 
 # The controller's end of the secure link (../common/link). The satellite
 # simulator stands in for the LoRa radio and the satellites; without it the
@@ -45,6 +56,7 @@ target_include_directories(app PRIVATE ../common/chime)
 target_sources(app PRIVATE ../common/chime/chime.c)
 
 target_sources_ifdef(CONFIG_APP_SAT_SIM app PRIVATE src/sat_sim.c)
+target_sources_ifdef(CONFIG_PM app PRIVATE src/sleep.c)
 
 # A node of the radio network simulator (radiosim.conf, radiosim.overlay):
 # the screen and the controls live in the simulator's web UI.

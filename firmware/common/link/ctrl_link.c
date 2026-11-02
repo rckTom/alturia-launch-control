@@ -14,10 +14,14 @@ LOG_MODULE_REGISTER(ctrl_link, LOG_LEVEL_INF);
 #define LINK_STACK_SIZE 6144
 #define LINK_PRIORITY   5
 /*
- * Receive window when there is nothing to send. Short, because it is also
- * how long a newly queued poll can wait before the thread notices it.
+ * Receive window when there is nothing to send. Frames and polls queued by
+ * other threads wake the link thread through the transport, so this only
+ * paces lsec's timers, which count in seconds, and lets the CPU sleep. A
+ * transport that cannot wake it gets the short window, which is also how
+ * long a newly queued poll can wait before the thread notices it.
  */
-#define RX_WINDOW_US 5000
+#define RX_WINDOW_US       100000
+#define RX_WINDOW_SHORT_US 5000
 
 #define TX_QUEUE_DEPTH   12
 #define POLL_QUEUE_DEPTH 4
@@ -72,6 +76,16 @@ static uint32_t polls_done;
 
 static K_THREAD_STACK_DEFINE(link_stack, LINK_STACK_SIZE);
 static struct k_thread link_thread;
+/* A wake is on its way to the link thread's recv(). */
+static atomic_t woken;
+
+/* Another thread queued work: get the link thread out of recv(). */
+static void wake_link(void)
+{
+	if (k_current_get() != &link_thread && tp->wake && atomic_cas(&woken, 0, 1)) {
+		tp->wake();
+	}
+}
 
 static void enqueue(const uint8_t *buf, size_t len)
 {
@@ -88,7 +102,9 @@ static void enqueue(const uint8_t *buf, size_t len)
 		/* lsec resends what matters; a lost DATA is like one lost on air. */
 		counters.tx_q_full++;
 		LOG_WRN("tx queue full, dropped kind %d", lsec_frame_kind(buf, len));
+		return;
 	}
+	wake_link();
 }
 
 #ifdef LINK_TEST_HOOKS
@@ -320,10 +336,12 @@ static void link_main(void *p1, void *p2, void *p3)
 		} else if (k_msgq_num_used_get(&tx_q) || k_msgq_num_used_get(&poll_q)) {
 			wait_us = 0;
 		} else {
-			wait_us = RX_WINDOW_US;
+			wait_us = tp->wake ? RX_WINDOW_US : RX_WINDOW_SHORT_US;
 		}
 
 		len = tp->recv(buf, sizeof(buf), K_USEC(wait_us), &info);
+		/* Whatever woke it, the queues are looked at below. */
+		atomic_clear(&woken);
 
 		k_mutex_lock(&lock, K_FOREVER);
 		if (len > 0) {
@@ -461,6 +479,7 @@ int ctrl_link_poll(uint8_t mask, const void *data, size_t len, size_t reply_len)
 				ret = -EBUSY;
 			} else {
 				polls_queued++;
+				wake_link();
 			}
 		}
 	}

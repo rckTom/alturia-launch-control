@@ -130,6 +130,19 @@
 	};
 };
 
+/* 160 MHz instead of 240: the UI and the link need far less, and the CPU
+ * mostly sleeps, so it is the awake current that counts.
+ */
+&cpu0 {
+	clock-frequency = <ESP32_CLK_CPU_PLL_160M>;
+};
+
+/* Wakes light sleep (CONFIG_PM) for the kernel's next timeout */
+&rtc_timer {
+	status = "okay";
+	wakeup-source;
+};
+
 &flash0 {
 	reg = <0x0 DT_SIZE_M(16)>;
 	ranges = <0x0 0x0 DT_SIZE_M(16)>;

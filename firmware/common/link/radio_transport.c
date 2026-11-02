@@ -40,6 +40,7 @@ static int channel_clear(uint32_t listen_us, int16_t *peak_dbm)
 const struct link_transport link_radio_transport = {
 	.send = send,
 	.recv = recv,
+	.wake = radio_wake,
 	.set_profile = set_profile,
 	.profile = profile,
 	.channel_clear = channel_clear,

@@ -256,6 +256,13 @@ static int tp_recv(void *buf, size_t size, k_timeout_t timeout, struct link_rx_i
 	return f.len;
 }
 
+static void tp_wake(void)
+{
+	struct ctrl_frame f = {.len = 0};
+
+	(void)k_msgq_put(&ctrl_inbox, &f, K_NO_WAIT);
+}
+
 static int tp_set_profile(enum link_profile p)
 {
 	ctrl_profile = p;
@@ -293,6 +300,7 @@ static uint32_t tp_airtime_ms(size_t len)
 static const struct link_transport transport = {
 	.send = tp_send,
 	.recv = tp_recv,
+	.wake = tp_wake,
 	.set_profile = tp_set_profile,
 	.profile = tp_profile,
 	.channel_clear = tp_channel_clear,

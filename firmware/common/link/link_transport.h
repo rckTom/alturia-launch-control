@@ -29,6 +29,8 @@ struct link_transport {
 	int (*send)(const void *buf, size_t len);
 	/* Wait up to @p timeout for a frame. Returns its length or -EAGAIN. */
 	int (*recv)(void *buf, size_t size, k_timeout_t timeout, struct link_rx_info *info);
+	/* Make a waiting recv() return 0 now, from another thread. May be NULL. */
+	void (*wake)(void);
 	/* Both ends hear each other only on the same profile. */
 	int (*set_profile)(enum link_profile p);
 	enum link_profile (*profile)(void);

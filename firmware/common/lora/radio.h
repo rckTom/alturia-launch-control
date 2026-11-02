@@ -57,6 +57,12 @@ int radio_recv(void *buf, size_t size, k_timeout_t timeout,
 	       struct radio_rx_info *info);
 
 /*
+ * Make a thread waiting in radio_recv() return 0 at once, so that it can
+ * look at other work without polling.
+ */
+void radio_wake(void);
+
+/*
  * Output power at the antenna connector, front-end gain included. It is
  * capped at 7 dBm for the 5 mW ERP band and the transceiver is clamped to
  * its -9..22 dBm range, so the result can differ from the request;

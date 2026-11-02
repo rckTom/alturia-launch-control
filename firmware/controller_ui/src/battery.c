@@ -8,6 +8,7 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/pm/policy.h>
 
 #include "battery.h"
 
@@ -106,12 +107,15 @@ static void poll(struct k_work *work)
 	b = info;
 	k_mutex_unlock(&lock);
 
+	/* The I2C driver sleeps on its interrupt; light sleep would stop its clock */
+	pm_policy_state_all_lock_get();
 #if HAVE_GAUGE
 	read_gauge(&b);
 #endif
 #if HAVE_CHARGER
 	read_charger(&b);
 #endif
+	pm_policy_state_all_lock_put();
 #if DT_NODE_HAS_PROP(USER_NODE, usb_pgood_gpios)
 	b.pgood = gpio_pin_get_dt(&pgood);
 	b.pgood = b.pgood < 0 ? -1 : b.pgood;

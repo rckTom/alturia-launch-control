@@ -450,3 +450,11 @@ int radio_recv(void *buf, size_t size, k_timeout_t timeout,
 	*info = pkt.info;
 	return pkt.len;
 }
+
+void radio_wake(void)
+{
+	/* An empty packet: the links ignore anything shorter than a header */
+	struct rx_packet pkt = {.len = 0};
+
+	(void)k_msgq_put(&rx_queue, &pkt, K_NO_WAIT);
+}

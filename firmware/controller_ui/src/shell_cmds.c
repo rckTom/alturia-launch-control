@@ -20,6 +20,7 @@
 #include "link.h"
 #include "pads.h"
 #include "sat_sim.h"
+#include "sleep.h"
 
 static int parse_on_off(const struct shell *sh, const char *arg, bool *out)
 {
@@ -288,6 +289,42 @@ static int cmd_ctrl_kbd(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+static int cmd_ctrl_sleep(const struct shell *sh, size_t argc, char **argv)
+{
+#ifdef CONFIG_PM
+	struct sleep_stats st;
+	bool allow;
+
+	if (argc == 2 && !strcmp(argv[1], "reset")) {
+		sleep_reset_stats();
+		return 0;
+	}
+	if (argc == 2) {
+		if (parse_on_off(sh, argv[1], &allow)) {
+			return -EINVAL;
+		}
+		sleep_allow(allow);
+		return 0;
+	}
+
+	sleep_get_stats(&st);
+	shell_print(sh, "light sleep %s, USB power %s%s", st.allowed ? "allowed" : "off",
+		    st.usb ? "present" : "absent", st.usb ? " (keeps it awake)" : "");
+	shell_print(sh, "on battery %llu.%01llu s, %u.%01u %% of it in standby",
+		    st.unlocked_ms / 1000, (st.unlocked_ms / 100) % 10,
+		    (uint32_t)(st.unlocked_ms ? st.slept_ms * 1000 / st.unlocked_ms / 10 : 0),
+		    (uint32_t)(st.unlocked_ms ? st.slept_ms * 1000 / st.unlocked_ms % 10 : 0));
+	shell_print(sh, "%u entries, woken %u times by the timer, %u by a pin", st.entries,
+		    st.timer_wakes, st.gpio_wakes);
+	return 0;
+#else
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+	shell_error(sh, "no CONFIG_PM");
+	return -ENOTSUP;
+#endif
+}
+
 static int cmd_ctrl_link(const struct shell *sh, size_t argc, char **argv)
 {
 	struct ctrl_link_state ls;
@@ -328,6 +365,9 @@ SHELL_STATIC_SUBCMD_SET_CREATE(ctrl_cmds,
 	SHELL_CMD(link, NULL, "Link state and counters", cmd_ctrl_link),
 	SHELL_CMD_ARG(battery, NULL, "Controller battery [<pct> <on|off>: fake it, no gauge only]",
 		      cmd_ctrl_battery, 1, 2),
+	SHELL_COND_CMD_ARG(CONFIG_PM, sleep, NULL,
+			   "Light sleep statistics [on|off: allow it, reset: clear them]",
+			   cmd_ctrl_sleep, 1, 1),
 	SHELL_SUBCMD_SET_END
 );
 SHELL_CMD_REGISTER(ctrl, &ctrl_cmds, "Controller inputs", NULL);
