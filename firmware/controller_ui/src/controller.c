@@ -116,7 +116,7 @@ static bool involved(int sat)
 
 static bool pad_is_armed_hybrid(int p)
 {
-	return v.state != CTRL_SAFE && (v.selected & BIT(p)) && pads[p].type == PAD_HYBRID;
+	return v.state != CTRL_SAFE && (v.selected & BIT64(p)) && pads[p].type == PAD_HYBRID;
 }
 
 /* Valve outputs to energize on one satellite, from the hybrid pad ops */
@@ -325,7 +325,7 @@ static void selection_masks(uint8_t out[NUM_SATS])
 		out[sat] = 0;
 	}
 	for (int p = 0; p < NUM_PADS; p++) {
-		if (v.selected & BIT(p)) {
+		if (v.selected & BIT64(p)) {
 			out[pads[p].sat] |= pad_channels(&pads[p]);
 		}
 	}
@@ -375,7 +375,7 @@ static const char *launch_block_reason(void)
 	static char buf[48];
 
 	for (int p = 0; p < NUM_PADS; p++) {
-		if ((v.selected & BIT(p)) && v.pad[p].problem) {
+		if ((v.selected & BIT64(p)) && v.pad[p].problem) {
 			snprintf(buf, sizeof(buf), "%s: %s", pad_name(p), v.pad[p].problem);
 			return buf;
 		}
@@ -405,7 +405,7 @@ static void toggle_pad(int p)
 		message(MSG_WARN, "%s is not available", pad_name(p));
 		return;
 	}
-	v.selected ^= BIT(p);
+	v.selected ^= BIT64(p);
 }
 
 static void request_arm(void)
@@ -443,13 +443,13 @@ static void request_safe(const char *why)
 	}
 }
 
-static uint16_t armed_hybrids(void)
+static uint64_t armed_hybrids(void)
 {
-	uint16_t mask = 0;
+	uint64_t mask = 0;
 
 	for (int p = 0; p < NUM_PADS; p++) {
 		if (pad_is_armed_hybrid(p)) {
-			mask |= BIT(p);
+			mask |= BIT64(p);
 		}
 	}
 	return mask;
@@ -469,7 +469,7 @@ static bool any_op(enum hybrid_op op)
 static void request_valve(enum hybrid_op op)
 {
 	const char *name = op == HYB_FILLING ? "FILL" : "VENT";
-	uint16_t hybrids = armed_hybrids();
+	uint64_t hybrids = armed_hybrids();
 	int64_t now = k_uptime_get();
 	char list[PADS_FORMAT_LEN];
 
@@ -494,7 +494,7 @@ static void request_valve(enum hybrid_op op)
 				list);
 		}
 		for (int p = 0; p < NUM_PADS; p++) {
-			if (hybrids & BIT(p)) {
+			if (hybrids & BIT64(p)) {
 				v.pad[p].op = op;
 				v.pad[p].fill_start = now;
 			}
@@ -586,7 +586,7 @@ static void setup_save(void)
 	}
 	su->active = false;
 	if (su->cfg.type == PAD_OFF) {
-		v.selected &= ~BIT(su->pad);
+		v.selected &= ~BIT64(su->pad);
 	}
 	if (pads_store(su->pad, &su->cfg)) {
 		message(MSG_WARN, "Pad %d applied, but could not be stored", su->pad + 1);
@@ -1098,7 +1098,7 @@ static void drain_requests(void)
 			break;
 		case CTRL_REQ_CURSOR:
 			if (v.state == CTRL_ARMED) {
-				int max = __builtin_popcount(v.selected) - ARMED_TABLE_ROWS;
+				int max = __builtin_popcountll(v.selected) - ARMED_TABLE_ROWS;
 
 				v.table_scroll = CLAMP(v.table_scroll + req.arg, 0, MAX(max, 0));
 			} else {
@@ -1182,7 +1182,7 @@ static void start_fire(int64_t now)
 			continue;
 		}
 		for (int p = 0; p < NUM_PADS; p++) {
-			if ((v.selected & BIT(p)) && pads[p].sat == sat) {
+			if ((v.selected & BIT64(p)) && pads[p].sat == sat) {
 				ign |= BIT(pads[p].ign);
 			}
 		}
@@ -1340,7 +1340,7 @@ void ctrl_tick(void)
 	if (v.state == CTRL_SAFE) {
 		for (int p = 0; p < NUM_PADS; p++) {
 			if (!ctrl_pad_visible(p)) {
-				v.selected &= ~BIT(p);
+				v.selected &= ~BIT64(p);
 			}
 		}
 	}

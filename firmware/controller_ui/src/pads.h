@@ -19,7 +19,8 @@
 
 #include "link.h"
 
-#define NUM_PADS      7
+/* Enough for every channel of every satellite to be a rocket pad */
+#define NUM_PADS      (NUM_SATS * NUM_CHANNELS)
 #define PAD_LABEL_MAX 4
 
 enum pad_type {
@@ -72,11 +73,14 @@ static inline uint8_t pad_channels(const struct pad_cfg *p)
 /* What operators see: the label if one is set, otherwise "Pad <n>" */
 const char *pad_name(int p);
 
-/* "ALFA, Pad 2, BETA" for a bitmask of pads */
-void pads_format(char *buf, size_t len, uint16_t mask);
+/*
+ * "ALFA, Pad 2, BETA" for a bitmask of pads (bit p = pad p). What does not
+ * fit in @p len is counted at the end instead: "ALFA, Pad 2 +5".
+ */
+void pads_format(char *buf, size_t len, uint64_t mask);
 
-/* Big enough for pads_format() with every pad */
-#define PADS_FORMAT_LEN (NUM_PADS * 8)
+/* A sensible size for pads_format(), a line on the display */
+#define PADS_FORMAT_LEN 48
 
 static inline char sat_name(int sat)
 {

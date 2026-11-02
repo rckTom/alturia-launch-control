@@ -17,7 +17,8 @@
 #include "lsec.h"
 #include "sat_wire.h"
 
-#define NUM_SATS 2
+/* Satellite n is lsec slot n + 1; the link's polls address at most 8 */
+#define NUM_SATS LSEC_MAX_SATS
 
 /*
  * Poll every joined satellite: one broadcast carrying cmds[sat] for each,

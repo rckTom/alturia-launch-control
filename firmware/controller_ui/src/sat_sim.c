@@ -110,6 +110,7 @@ static struct sim sims[NUM_SATS] = {
 		.load_mohm = {1500, 1100, 1800, RES_OPEN_MOHM, 27000, 25000},
 		.st = {.vbat_mv = 12150},
 	},
+	/* The others: igniters on CH1-4, CH5-6 unused (see sat_sim_transport) */
 };
 
 static struct air_tx air[AIR_RECORDS];
@@ -683,6 +684,13 @@ const struct link_transport *sat_sim_transport(void)
 			.user = s,
 		};
 
+		if (!s->st.vbat_mv) {
+			for (int ch = 0; ch < NUM_CHANNELS; ch++) {
+				s->load_mohm[ch] = ch < 4 ? 1100 + 150 * ((sat + ch) % 5)
+							  : RES_OPEN_MOHM;
+			}
+			s->st.vbat_mv = 12300 - 60 * sat;
+		}
 		s->link_up = true;
 		s->loss_pct = 5;
 		s->st.key_armed = true;

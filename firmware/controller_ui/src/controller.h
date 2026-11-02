@@ -168,7 +168,7 @@ struct ctrl_view {
 	enum ctrl_state state;
 	struct sat_view sat[NUM_SATS];
 	struct pad_view pad[NUM_PADS];
-	uint16_t selected;        /* bit per pad */
+	uint64_t selected;        /* BIT64(pad) per pad */
 	int cursor;               /* pad under the list cursor, never an OFF pad */
 	int table_scroll;         /* first visible row of the armed table */
 	struct menu_view settings;    /* settings menu, opened by holding OK */

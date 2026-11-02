@@ -9,6 +9,8 @@
 
 LOG_MODULE_REGISTER(pads, LOG_LEVEL_INF);
 
+BUILD_ASSERT(NUM_PADS <= 64, "pad masks are 64 bits");
+
 /* Defaults for a new controller, replaced by whatever is stored */
 struct pad_cfg pads[NUM_PADS] = {
 	/* Satellite A: one hybrid pad and three rocket pads */
@@ -129,14 +131,25 @@ const char *pad_name(int p)
 	return numbered[p];
 }
 
-void pads_format(char *buf, size_t len, uint16_t mask)
+void pads_format(char *buf, size_t len, uint64_t mask)
 {
+	int left = __builtin_popcountll(mask);
 	size_t n = 0;
 
 	buf[0] = '\0';
-	for (int p = 0; p < NUM_PADS && n < len; p++) {
-		if (mask & BIT(p)) {
-			n += snprintf(buf + n, len - n, "%s%s", n ? ", " : "", pad_name(p));
+	for (int p = 0; p < NUM_PADS && left > 0; p++) {
+		const char *name;
+
+		if (!(mask & BIT64(p))) {
+			continue;
 		}
+		name = pad_name(p);
+		/* This name, and room for " +NN" if more follow */
+		if (n + (n ? 2 : 0) + strlen(name) + (left > 1 ? 4 : 0) >= len) {
+			snprintf(buf + n, len - n, "%s+%d", n ? " " : "", left);
+			return;
+		}
+		n += snprintf(buf + n, len - n, "%s%s", n ? ", " : "", name);
+		left--;
 	}
 }

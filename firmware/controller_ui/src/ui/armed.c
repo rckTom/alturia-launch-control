@@ -174,7 +174,7 @@ static int sort_pads(const struct ctrl_view *v, int order[NUM_PADS])
 		for (int p = 0; p < NUM_PADS; p++) {
 			int r = v->pad[p].problem ? 0 : pads[p].type == PAD_HYBRID ? 1 : 2;
 
-			if ((v->selected & BIT(p)) && r == rank) {
+			if ((v->selected & BIT64(p)) && r == rank) {
 				order[n++] = p;
 			}
 		}
