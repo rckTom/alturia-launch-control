@@ -3,7 +3,7 @@
  * pad that uses it. OK on a channel sets its pad up, or a new rocket pad
  * if the channel is free. Left and right jump a satellite.
  *
- *  SETTINGS  -  PADS
+ *  MENU  -  PADS
  *  A  51A7E11172000000                   paired
  *  CH1   ALFA    hybrid igniter
  *  CH2   Pad 2   rocket

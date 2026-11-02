@@ -4,7 +4,7 @@
  * Boxes do not use the theme: their whole look comes from the shared
  * styles here, so the views only place things. Inversion is a state: a
  * box in LV_STATE_CHECKED picks up ui_style_inverted, and the labels in it
- * inherit its text color.
+ * inherit its text color. In every list the cursor is the inverted row.
  *
  * LVGL redraws a label or object whenever its text, a style or a state is
  * set, even to the value it already has. ui_refresh() runs every
@@ -139,17 +139,6 @@ lv_obj_t *ui_footer(lv_obj_t *view, int32_t rule_y, const char *text)
 	ui_set_text(footer, text);
 	lv_obj_set_pos(footer, MARGIN, rule_y + 8);
 	return footer;
-}
-
-/* Points at the selected row. Not part of the rows, so it reads on
- * selected (inverted) rows too.
- */
-lv_obj_t *ui_cursor(lv_obj_t *view)
-{
-	lv_obj_t *cursor = ui_label(view, FONT_SMALL);
-
-	ui_set_text(cursor, LV_SYMBOL_RIGHT);
-	return cursor;
 }
 
 int ui_scroll(int first, int top, int cursor, int count, int rows)

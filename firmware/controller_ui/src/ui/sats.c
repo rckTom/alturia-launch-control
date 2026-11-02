@@ -45,7 +45,6 @@ static lv_obj_t *pair_title;
 static lv_obj_t *pair_text;
 static lv_obj_t *pair_found[PAIR_MAX_FOUND];
 static lv_obj_t *pair_found_text[PAIR_MAX_FOUND];
-static lv_obj_t *pair_cursor;
 static lv_obj_t *pair_grid;
 static lv_obj_t *pair_dot[LSEC_SAS_FRAMES][LSEC_SAS_LEDS];
 static lv_obj_t *pair_help;
@@ -96,7 +95,6 @@ static void create_pair(lv_obj_t *scr)
 		pair_found_text[i] = ui_label(pair_found[i], FONT_MEDIUM);
 		lv_obj_align(pair_found_text[i], LV_ALIGN_LEFT_MID, 8, 0);
 	}
-	pair_cursor = ui_cursor(pair_view);
 
 	/* The pattern: a numbered row per LED frame, a dot per channel LED */
 	pair_grid = ui_box(pair_view, 0, 0, 240, SCREEN_H - 30);
@@ -182,8 +180,6 @@ static void refresh_found(const struct pair_view *pv)
 			ui_set_inverted(pair_found[i], i == pv->cursor);
 		}
 	}
-	ui_set_visible(pair_cursor, scanning && pv->found > 0);
-	lv_obj_set_pos(pair_cursor, CURSOR_X, PAIR_LIST_Y0 + pv->cursor * PAIR_LIST_H + 4);
 }
 
 /* While comparing: the pattern on the left, the text beside it */

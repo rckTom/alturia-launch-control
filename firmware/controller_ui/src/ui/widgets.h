@@ -20,8 +20,7 @@
 /* Layout every view follows */
 #define MARGIN       8    /* left edge of titles and lines of text */
 #define TITLE_RULE_Y 27   /* the rule under the title bar */
-#define ROW_X        18   /* list rows start here... */
-#define CURSOR_X     3    /* ...and the cursor sits left of them */
+#define ROW_X        18   /* rows of short lists start here */
 
 /* Scrolling lists: rows under the title, a rule and a line of help below */
 #define LIST_Y0      31
@@ -52,7 +51,6 @@ lv_obj_t *ui_text_line(lv_obj_t *parent, const lv_font_t *font, int32_t w,
 void ui_rule(lv_obj_t *parent, int32_t y);
 lv_obj_t *ui_title(lv_obj_t *view, const char *text);
 lv_obj_t *ui_footer(lv_obj_t *view, int32_t rule_y, const char *text);
-lv_obj_t *ui_cursor(lv_obj_t *view);
 
 /*
  * Lists longer than the screen. ui_scroll() returns the first row to show,

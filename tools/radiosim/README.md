@@ -51,7 +51,7 @@ uv run radiosim --scenario sim-run/scenario.json --autostart
 Use **+ Controller** and **+ Satellite** to start instances. To pair a
 satellite:
 
-1. On the controller's screen (in the dock), hold OK to open the settings.
+1. On the controller's screen (in the dock), hold OK to open the menu.
 2. Choose *Satellites*, pick a slot, and press OK.
 3. Select the satellite, hold its **Button** for 5 s, then choose it on the
    controller.
