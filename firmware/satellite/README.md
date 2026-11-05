@@ -73,12 +73,18 @@ west build -b native_sim/native/64 -d build-sim .
 The LoRa link is the shared secure link in
 [`../common/link/`](../common/link/) (spec:
 [`design/radio_security.md`](../../design/radio_security.md)). A new
-satellite pairs with the console over the air: hold the user button (the
-continuity button on the real board) for 5 s with every channel SAFE, compare
+satellite pairs with the console over the air: press the user button (the
+continuity button on the real board) three times within 1 s with every
+channel SAFE, compare
 the pattern on the channel LEDs with the console's, and press the button
 if they match. The Nucleo has no channel LEDs, so the pattern is also in the
 log, and `sat pair confirm` / `sat pair reject` answer from the shell.
 `sat link` shows the link state; `sat unpair` forgets the console.
+
+A single press of the continuity button shows continuity on the channel
+LEDs for 5 s: lit for an output that reads OK, fast blinking when open,
+slow blinking for a short or a failed measurement. The status LED blinks every 2 s while
+the satellite is on and stays lit while it has a session with the console.
 
 ## Footprint
 

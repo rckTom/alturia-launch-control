@@ -16,6 +16,7 @@ target_sources(app PRIVATE
 	src/rail.c
 	src/shell_cmds.c
 	src/arm.c
+	src/fault.c
 )
 
 # The satellite's end of the secure LoRa link, shared with the bench.

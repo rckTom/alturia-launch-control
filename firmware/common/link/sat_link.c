@@ -26,6 +26,25 @@ static int16_t last_rssi;
 static int8_t last_snr;
 /* How busy the channel is, as this satellite hears it. */
 static struct link_util util;
+/*
+ * Whether pairing is on, readable without the lock: the lock is held across
+ * a send, and a send waits for the radio's TX-done work item, so a work
+ * item that waited for the lock would stall the system work queue for the
+ * driver's 15 s TX timeout.
+ */
+static atomic_t pairing_on;
+/* Whether a session with the controller is up, likewise. */
+static atomic_t joined_on;
+
+/*
+ * Pairing gestures from other threads, carried out by the link thread: they
+ * end in crypto, a flash write and a send, which need the link thread's
+ * stack (the input thread's 1 KB overflowed on a confirm).
+ */
+#define REQ_PAIR_START BIT(0)
+#define REQ_ACCEPT     BIT(1)
+#define REQ_REJECT     BIT(2)
+static atomic_t requests;
 
 /* The answer to the poll being handled, waiting for its slot. */
 static struct {
@@ -209,8 +228,12 @@ static uint64_t read_uid(void)
 /* Pairing happens on its own short-range radio profile. */
 static void update_profile(void)
 {
-	enum link_profile want =
-		lsec_sat_pairing_active(&sat) ? LINK_PROFILE_PAIR : LINK_PROFILE_LINK;
+	bool pairing = lsec_sat_pairing_active(&sat);
+	enum link_profile want = pairing ? LINK_PROFILE_PAIR : LINK_PROFILE_LINK;
+
+	/* A start that is still queued counts, or pair_ui would stop blinking. */
+	atomic_set(&pairing_on, pairing || (atomic_get(&requests) & REQ_PAIR_START));
+	atomic_set(&joined_on, sat.joined);
 
 	if (tp->profile() != want) {
 		tp->set_profile(want);
@@ -252,6 +275,15 @@ static void link_main(void *p1, void *p2, void *p3)
 			send_reply();
 		}
 
+		atomic_val_t req = atomic_clear(&requests);
+
+		if (req & REQ_PAIR_START) {
+			(void)lsec_sat_pair_start(&sat, k_uptime_get());
+		}
+		if (req & (REQ_ACCEPT | REQ_REJECT)) {
+			lsec_sat_pair_confirm(&sat, !(req & REQ_REJECT), k_uptime_get());
+		}
+
 		/* lsec's own frames (HELLO) would land in someone's slot. */
 		if (!reply.pending) {
 			lsec_sat_poll(&sat, k_uptime_get());
@@ -262,12 +294,22 @@ static void link_main(void *p1, void *p2, void *p3)
 	}
 }
 
+static int store(void *user, uint8_t slot, const struct lsec_pairing *p)
+{
+	int ret = lsec_store_save(user, slot, p);
+
+	if (ret) {
+		LOG_ERR("pairing %s slot %u: %d", p ? "save" : "delete", slot, ret);
+	}
+	return ret;
+}
+
 int sat_link_init(link_event_cb cb, const struct link_transport *transport)
 {
 	const struct lsec_io io = {
 		.send = io_send,
 		.event = io_event,
-		.store = lsec_store_save,
+		.store = store,
 	};
 	uint64_t uid = read_uid();
 	uint32_t seed;
@@ -338,23 +380,25 @@ int sat_link_send(const void *data, size_t len)
 	return ret;
 }
 
+static void request(atomic_val_t req)
+{
+	atomic_or(&requests, req);
+	if (k_current_get() != &link_thread && tp->wake) {
+		tp->wake();
+	}
+}
+
 int sat_link_pair_start(void)
 {
-	int ret;
+	atomic_set(&pairing_on, true);
+	request(REQ_PAIR_START);
 
-	k_mutex_lock(&lock, K_FOREVER);
-	ret = lsec_sat_pair_start(&sat, k_uptime_get());
-	update_profile();
-	k_mutex_unlock(&lock);
-
-	return ret;
+	return 0;
 }
 
 void sat_link_pair_confirm(bool accept)
 {
-	k_mutex_lock(&lock, K_FOREVER);
-	lsec_sat_pair_confirm(&sat, accept, k_uptime_get());
-	k_mutex_unlock(&lock);
+	request(accept ? REQ_ACCEPT : REQ_REJECT);
 }
 
 int sat_link_unpair(void)
@@ -366,6 +410,16 @@ int sat_link_unpair(void)
 	k_mutex_unlock(&lock);
 
 	return ret;
+}
+
+bool sat_link_pairing(void)
+{
+	return atomic_get(&pairing_on);
+}
+
+bool sat_link_joined(void)
+{
+	return atomic_get(&joined_on);
 }
 
 void sat_link_state(struct sat_link_state *out)

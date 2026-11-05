@@ -61,6 +61,13 @@ struct cont_result {
  * circuit.
  */
 int channels_continuity_mohm(int ch, struct cont_result *res);
+/*
+ * The high-side switch of channel @p ch, for ARM with K1 closed: the tap
+ * (PYRO_H / 4.3) with the high side off, then on, the low side off all
+ * along so that nothing flows through the igniter. -EBUSY while armed,
+ * -ENOTSUP without the hardware.
+ */
+int channels_check_high(int ch, int32_t *off_uv, int32_t *on_uv);
 int channels_rail_mv(int input, int32_t *mv);
 int channels_diagnostics(bool on);
 int channels_latch_clear(void);
@@ -75,6 +82,11 @@ void commands_on_poll(const struct lsec_event *ev);
 void commands_measure(void);
 /* Disarm everything, as a command would. */
 void commands_disarm(const char *why);
+/*
+ * The latest continuity per output, as bit masks: reading OK, and shorted
+ * or not measurable. Lock-free, for the LEDs' work item.
+ */
+void commands_cont_masks(uint8_t *ok, uint8_t *bad);
 
 /* Arm relay K1: ARM_ENABLE and the ARM_PUMP one-shot (needs the key on). */
 int arm_init(void);
@@ -91,5 +103,9 @@ int rail_vbat_mv(int32_t *mv);
 /* The measurable supply rails, by index: name and voltage. */
 size_t rails_count(void);
 int rails_read(size_t i, const char **name, int32_t *mv);
+
+/* fault.c: the fatal error that rebooted the satellite, if any. */
+struct shell;
+void fault_print(const struct shell *sh);
 
 #endif /* SATELLITE_H_ */

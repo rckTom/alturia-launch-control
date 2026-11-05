@@ -9,13 +9,13 @@ config APP_SAT_SIM
 
 config APP_PREARM_CONTINUITY
 	bool "Satellites report continuity while disarmed"
-	default APP_SAT_SIM
+	default y
 	help
 	  The satellites' continuity readings are real before arming, so the
 	  main list shows them. Without it the list shows "?" until the
 	  pads are armed, and continuity is only judged from the armed
-	  readings. The simulated satellites model it; the satellite
-	  firmware does not measure through V_TEST while disarmed yet.
+	  readings. The satellite firmware measures through V_TEST while
+	  disarmed, one output every 0.65 s or so.
 
 config APP_ARMED_BEEP
 	bool "Click every 2 s while armed"

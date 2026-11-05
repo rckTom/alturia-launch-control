@@ -75,13 +75,24 @@ int sat_link_send(const void *data, size_t len);
 
 /*
  * Enter pairing mode for LSEC_PAIR_WINDOW_MS. The caller has checked that
- * the satellite is SAFE and that the user made the physical gesture.
+ * the satellite is SAFE and that the user made the physical gesture. Both
+ * this and the confirm only queue the request for the link thread, so they
+ * are safe from any thread with any stack.
  */
 int sat_link_pair_start(void);
 void sat_link_pair_confirm(bool accept);
 int sat_link_unpair(void);
 
 void sat_link_state(struct sat_link_state *out);
+
+/*
+ * Whether pairing mode is on. Unlike sat_link_state() it does not wait for
+ * the link, so work items (the system work queue also carries the radio's
+ * TX-done) must use this one.
+ */
+bool sat_link_pairing(void);
+/* Whether a session with the controller is up; lock-free like sat_link_pairing(). */
+bool sat_link_joined(void);
 
 /*
  * Bench only, built with LINK_TEST_HOOKS: send the last sealed DATA frame

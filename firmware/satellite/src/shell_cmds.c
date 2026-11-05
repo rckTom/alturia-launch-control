@@ -188,6 +188,12 @@ static int cmd_fire(const struct shell *sh, size_t argc, char **argv)
 	return ret;
 }
 
+static int cmd_fault(const struct shell *sh, size_t argc, char **argv)
+{
+	fault_print(sh);
+	return 0;
+}
+
 static int cmd_beep(const struct shell *sh, size_t argc, char **argv)
 {
 	chime_startup();
@@ -207,6 +213,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sat_cmds,
 	SHELL_CMD_ARG(unpair, NULL, "forget the console", cmd_unpair, 1, 0),
 	SHELL_CMD_ARG(link, NULL, "link state and drop counters", cmd_link, 1, 0),
 	SHELL_CMD_ARG(beep, NULL, "play the start-up chime", cmd_beep, 1, 0),
+	SHELL_CMD_ARG(fault, NULL, "the fatal error that rebooted the satellite", cmd_fault, 1, 0),
 	SHELL_SUBCMD_SET_END
 );
 

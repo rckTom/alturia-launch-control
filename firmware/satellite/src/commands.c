@@ -9,9 +9,18 @@
  * reports that id, and a repeat is only answered, never executed again.
  * That is what makes it safe to repeat FIRE.
  *
- * Provisional, until the board and its maths exist:
- *   - there is no pad key input yet, so the status reports the key in ARM;
- *   - continuity is the ADC reading taken as CONT_MOHM_PER_MV mOhm per mV.
+ * ARM runs its checks in the order the hardware allows (arm_run()):
+ *   1. K1 open: each output's continuity reads OK, which also proves its
+ *      low-side FET (not shorted with it off, conducting with it on);
+ *   2. K1 closed, both FETs off: each high side switches, PYRO_H near 0 V
+ *      off and near the rail on; the low side is known good, so no current
+ *      reaches the igniter;
+ *   3. the channels count as armed. Their FETs only go on, together, for a
+ *      fire pulse or a held valve.
+ * A failed check releases K1 and reports the channels in arm_refused.
+ *
+ * Without the continuity source (native_sim, the Nucleo) continuity is the
+ * ADC reading taken as CONT_MOHM_PER_MV mOhm per mV, and there is no K1.
  */
 
 #include <errno.h>
@@ -30,6 +39,13 @@ LOG_MODULE_REGISTER(commands, LOG_LEVEL_INF);
 #define SHORT_BELOW_MOHM  200
 #define OPEN_ABOVE_MOHM   100000
 #define CONT_MOHM_PER_MV  10
+/* A reading older than this does not clear ARM; a round takes some 4 s. */
+#define CONT_MAX_AGE_MS   8000
+/* K1: the pump's first edge, the relay's operate time, the rail's rise. */
+#define K1_SETTLE_MS      150
+/* The high-side check, at the tap (PYRO_H / 4.3). */
+#define HS_OFF_MAX_UV     200000    /* PYRO_H below 0.9 V */
+#define HS_ON_MIN_UV      1000000   /* PYRO_H above 4.3 V */
 
 BUILD_ASSERT(NUM_CHANNELS == SAT_CHANNELS);
 
@@ -37,81 +53,210 @@ static K_MUTEX_DEFINE(lock);
 static struct sat_status st;
 static uint8_t last_id;
 
-/* Measurements, refreshed from the main loop: the ADCs are too slow for
- * the few milliseconds between a poll and the reply slot.
- */
-void commands_measure(void)
-{
-	int32_t res[NUM_CHANNELS];
-	enum continuity cont[NUM_CHANNELS];
-	int32_t mv;
+/* ARM waiting for the main loop to run its checks, and which request it is. */
+static uint8_t arm_pending;
+static uint32_t arm_gen;
+/* When each output's continuity was last measured, and which ones failed to. */
+static int64_t cont_at[NUM_CHANNELS];
+static uint8_t cont_failed;
+/* For the LEDs, readable without the lock: outputs reading OK, and shorted or failed. */
+static atomic_t cont_ok_mask;
+static atomic_t cont_bad_mask;
 
-	for (int ch = 0; ch < NUM_CHANNELS; ch++) {
-		if (channels_continuity(ch, &mv) || mv < 0 ||
-		    (int64_t)mv * CONT_MOHM_PER_MV > OPEN_ABOVE_MOHM) {
-			res[ch] = RES_OPEN_MOHM;
-			cont[ch] = CONT_OPEN;
-		} else {
-			res[ch] = mv * CONT_MOHM_PER_MV;
-			cont[ch] = res[ch] < SHORT_BELOW_MOHM ? CONT_SHORT : CONT_OK;
+/* One output's continuity, into the status. Main loop only. */
+static void measure_one(int ch)
+{
+	struct cont_result r;
+	enum continuity cont;
+	int32_t res, mv;
+	int ret = channels_continuity_mohm(ch, &r);
+
+	if (ret == -EBUSY) {
+		return;   /* armed: the low side cannot go on; the pre-arm reading stays */
+	}
+	if (ret == -ENOTSUP) {
+		/* No continuity source: the ADC reading as it is. */
+		ret = channels_continuity(ch, &mv);
+		r.open = ret == 0 && (mv < 0 || (int64_t)mv * CONT_MOHM_PER_MV > OPEN_ABOVE_MOHM);
+		r.mohm = r.open ? RES_OPEN_MOHM : mv * CONT_MOHM_PER_MV;
+	}
+
+	if (ret) {
+		/* -ERANGE is what a low side shorted while off looks like. */
+		if (!(cont_failed & BIT(ch))) {
+			LOG_WRN("CH%d continuity: %d", ch + 1, ret);
 		}
+		res = RES_OPEN_MOHM;
+		cont = CONT_OPEN;
+	} else if (r.open || r.mohm > OPEN_ABOVE_MOHM) {
+		res = RES_OPEN_MOHM;
+		cont = CONT_OPEN;
+	} else {
+		res = r.mohm;
+		cont = r.mohm < SHORT_BELOW_MOHM ? CONT_SHORT : CONT_OK;
 	}
 
 	k_mutex_lock(&lock, K_FOREVER);
-	memcpy(st.res_mohm, res, sizeof(res));
-	memcpy(st.cont, cont, sizeof(cont));
-	if (rail_vbat_mv(&mv) == 0) {
-		st.vbat_mv = mv;
-	}
-	/* No fire-rail current monitor on the board. */
-	st.rail_ma = 0;
+	st.res_mohm[ch] = res;
+	st.cont[ch] = cont;
+	WRITE_BIT(cont_failed, ch, ret != 0);
+	cont_at[ch] = k_uptime_get();
 	k_mutex_unlock(&lock);
+
+	if (cont == CONT_OK) {
+		atomic_set_bit(&cont_ok_mask, ch);
+	} else {
+		atomic_clear_bit(&cont_ok_mask, ch);
+	}
+	if (ret || cont == CONT_SHORT) {
+		atomic_set_bit(&cont_bad_mask, ch);
+	} else {
+		atomic_clear_bit(&cont_bad_mask, ch);
+	}
+}
+
+void commands_cont_masks(uint8_t *ok, uint8_t *bad)
+{
+	*ok = (uint8_t)atomic_get(&cont_ok_mask);
+	*bad = (uint8_t)atomic_get(&cont_bad_mask);
 }
 
 static void disarm_locked(void)
 {
+	arm_pending = 0;
+	arm_gen++;
 	for (int ch = 0; ch < NUM_CHANNELS; ch++) {
 		channels_arm(ch, false);
 	}
+	(void)arm_relay_set(false);
 }
 
 void commands_disarm(const char *why)
 {
 	k_mutex_lock(&lock, K_FOREVER);
-	if (!channels_all_safe()) {
+	if (!channels_all_safe() || arm_pending) {
 		LOG_WRN("SAFE: %s", why);
 		disarm_locked();
 	}
 	k_mutex_unlock(&lock);
 }
 
-static void arm(uint8_t mask)
+/* ARM's checks, see the top of the file. Main loop, without the lock. */
+static void arm_run(uint8_t mask, uint32_t gen)
 {
-	if (!channels_all_safe()) {
-		return;   /* already armed: ARM does not change the set */
-	}
+	int64_t now = k_uptime_get();
+	uint8_t refused = 0;
+	int ret;
 
-	/*
-	 * Pre-arm check: an output that reads shorted while disarmed would
-	 * fire the moment the arm relay closes.
-	 */
-	st.arm_refused = 0;
+	k_mutex_lock(&lock, K_FOREVER);
 	for (int ch = 0; ch < NUM_CHANNELS; ch++) {
-		if ((mask & BIT(ch)) && st.cont[ch] == CONT_SHORT) {
-			st.arm_refused |= BIT(ch);
+		if ((mask & BIT(ch)) &&
+		    (st.cont[ch] != CONT_OK || (cont_failed & BIT(ch)) ||
+		     now - cont_at[ch] > CONT_MAX_AGE_MS)) {
+			refused |= BIT(ch);
 		}
 	}
-	if (st.arm_refused) {
-		LOG_WRN("ARM refused, shorted outputs 0x%02x", st.arm_refused);
+	k_mutex_unlock(&lock);
+
+	if (refused) {
+		LOG_WRN("ARM refused, continuity 0x%02x", refused);
+	} else if (arm_key_on() == 0) {
+		LOG_WRN("ARM refused, key switch SAFE");
+		refused = mask;
+	} else {
+		ret = arm_relay_set(true);
+		if (ret == 0) {
+			k_msleep(K1_SETTLE_MS);
+			for (int ch = 0; ch < NUM_CHANNELS; ch++) {
+				int32_t off_uv = 0, on_uv = 0;
+
+				if (!(mask & BIT(ch))) {
+					continue;
+				}
+				ret = channels_check_high(ch, &off_uv, &on_uv);
+				if (ret || off_uv > HS_OFF_MAX_UV || on_uv < HS_ON_MIN_UV) {
+					LOG_WRN("CH%d high side failed: off %d uV, on %d uV (%d)",
+						ch + 1, off_uv, on_uv, ret);
+					refused |= BIT(ch);
+				}
+			}
+		} else if (ret != -ENOTSUP) {
+			LOG_ERR("arm relay: %d", ret);
+			refused = mask;
+		}
+	}
+
+	k_mutex_lock(&lock, K_FOREVER);
+	if (gen != arm_gen) {
+		/* DISARM came while the checks ran: it has released K1 already. */
+		k_mutex_unlock(&lock);
+		return;
+	}
+	arm_pending = 0;
+	if (refused) {
+		st.arm_refused = refused;
+		(void)arm_relay_set(false);
+	} else {
+		for (int ch = 0; ch < NUM_CHANNELS; ch++) {
+			if (mask & BIT(ch)) {
+				channels_arm(ch, true);
+			}
+		}
+		LOG_INF("ARMED, mask 0x%02x", mask);
+	}
+	k_mutex_unlock(&lock);
+}
+
+/*
+ * The main loop's share: a pending ARM, else one output's continuity. The
+ * ADCs are too slow for the few milliseconds between a poll and the reply
+ * slot, and one output takes some 0.55 s.
+ */
+void commands_measure(void)
+{
+	static int next;
+	uint8_t mask;
+	uint32_t gen;
+	int32_t mv;
+
+	bool vbat_ok = rail_vbat_mv(&mv) == 0;
+
+	k_mutex_lock(&lock, K_FOREVER);
+	mask = arm_pending;
+	gen = arm_gen;
+	if (vbat_ok) {
+		st.vbat_mv = mv;
+	}
+	/* No fire-rail current monitor on the board. */
+	st.rail_ma = 0;
+	k_mutex_unlock(&lock);
+
+	if (mask) {
+		arm_run(mask, gen);
 		return;
 	}
 
-	for (int ch = 0; ch < NUM_CHANNELS; ch++) {
-		if (mask & BIT(ch)) {
-			channels_arm(ch, true);
-		}
+	/*
+	 * Not with K1 closed: a channel that is not armed has not had its
+	 * high side checked, and the measurement turns its low side on.
+	 */
+	if (arm_relay_on()) {
+		return;
 	}
-	LOG_INF("ARMED, mask 0x%02x", mask);
+
+	measure_one(next);
+	next = (next + 1) % NUM_CHANNELS;
+}
+
+static void arm(uint8_t mask)
+{
+	if (!channels_all_safe() || arm_pending) {
+		return;   /* armed or arming: ARM does not change the set */
+	}
+
+	st.arm_refused = 0;
+	arm_pending = mask;
+	arm_gen++;
 }
 
 static void fire(uint8_t mask)
@@ -138,7 +283,7 @@ static void execute(const struct link_cmd *cmd)
 			break;
 		case CMD_DISARM:
 			st.arm_refused = 0;
-			if (!channels_all_safe()) {
+			if (!channels_all_safe() || arm_pending) {
 				LOG_INF("SAFE: disarm command");
 			}
 			disarm_locked();
@@ -171,7 +316,7 @@ static size_t build_status(bool full, uint8_t *out)
 
 	st.seq++;
 	st.state = channels_pulsing() ? SAT_FIRING : armed ? SAT_ARMED : SAT_SAFE;
-	st.key_armed = true;   /* no pad key input yet */
+	st.key_armed = arm_key_on() != 0;   /* -ENOTSUP without the input: no key */
 	st.armed_mask = armed;
 	st.firing_mask = channels_pulsing();
 	st.valve_mask = channels_valve_mask();

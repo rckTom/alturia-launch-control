@@ -5,4 +5,8 @@ if BOARD_ALTURIA_SATELLITE
 # Console and shell on USB-C (CDC ACM), see alturia_satellite.dts.
 source "boards/common/usb/Kconfig.cdc_acm_serial.defconfig"
 
+# board.c: the jump to the ROM DFU bootloader after a `dfu` reboot.
+config BOARD_EARLY_INIT_HOOK
+	default y
+
 endif # BOARD_ALTURIA_SATELLITE

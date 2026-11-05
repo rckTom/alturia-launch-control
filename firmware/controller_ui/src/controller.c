@@ -22,7 +22,8 @@ LOG_MODULE_REGISTER(controller, LOG_LEVEL_INF);
 #define RETRY_JITTER_MS     100
 /* Unacknowledged requests are retried this long; then the fault handling decides. */
 #define RETRY_FOR_MS        5000
-#define ARM_ACK_TIMEOUT_MS  2000
+/* A satellite checks continuity and its high sides before it reports ARMED. */
+#define ARM_ACK_TIMEOUT_MS  5000
 #define FIRE_ACK_TIMEOUT_MS 3000
 #define ARM_TIMEOUT_MS      (CONFIG_APP_ARM_TIMEOUT_S * 1000)
 #define LINK_STABLE_MS      2000  /* link needed this long before pads return */
@@ -1409,11 +1410,16 @@ static void tick_arming(int64_t now)
 		uint8_t refused = v.sat[sat].st.arm_refused;
 
 		if (involved(sat) && fresh(sat) && refused) {
-			int ch = __builtin_ctz(refused) + 1;
+			int ch = __builtin_ctz(refused);
+			const struct sat_status *st = &v.sat[sat].st;
+			const char *why = !st->key_armed            ? "key switch SAFE"
+					  : st->cont[ch] == CONT_SHORT ? "output shorted"
+					  : st->cont[ch] == CONT_OPEN  ? "output open"
+								       : "high side failed";
 
 			disarm_all();
-			message(MSG_FAULT, "Satellite %c refused ARM: CH%d output shorted",
-				sat_name(sat), ch);
+			message(MSG_FAULT, "Satellite %c refused ARM: CH%d %s", sat_name(sat), ch + 1,
+				why);
 			v.fault_active = true;
 			return;
 		}

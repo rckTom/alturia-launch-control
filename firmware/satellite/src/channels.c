@@ -15,6 +15,8 @@ LOG_MODULE_REGISTER(channels, LOG_LEVEL_INF);
 
 /* High-side enable into the TPS1HB08, low-side gate to the igniter FET.
  * Both must be asserted for current to flow; the arm relay holds the rail.
+ * Arming switches neither: both go on together only for a fire pulse or a
+ * held valve, so while armed a single stuck switch still fires nothing.
  */
 static const struct gpio_dt_spec enable_high[SAT_CHANNELS] = {
 	EN_SPEC(en_h1), EN_SPEC(en_h2), EN_SPEC(en_h3),
@@ -53,7 +55,7 @@ static uint8_t pulsing;
 static uint8_t valves;
 
 static void pulse_end_fn(struct k_work *work);
-static int update_low(int ch);
+static int update_outputs(int ch);
 static K_WORK_DELAYABLE_DEFINE(pulse_end, pulse_end_fn);
 
 static int adc_setup(const struct device *dev, uint8_t ch, uint8_t ref)
@@ -263,7 +265,7 @@ static int cont_sample(int ch, int idle, struct cont_samples *s)
 		k_msleep(CONT_SETTLE_MS);
 		ret = cont_convert_uv(ch, &s->zero_uv);
 	}
-	(void)update_low(ch);
+	(void)update_outputs(ch);
 	return ret;
 }
 
@@ -276,8 +278,15 @@ int channels_continuity_mohm(int ch, struct cont_result *res)
 	if (ch < 0 || ch >= SAT_CHANNELS) {
 		return -EINVAL;
 	}
-	/* The low side goes on below: never with the high side enabled. */
+
+	/*
+	 * The low side goes on below: never with the high side enabled. The
+	 * check is under cont_lock, which channels_arm() takes too, so an ARM
+	 * cannot come in between it and the low side.
+	 */
+	k_mutex_lock(&cont_lock, K_FOREVER);
 	if (armed[ch]) {
+		k_mutex_unlock(&cont_lock);
 		return -EBUSY;
 	}
 	/* The neighbour whose tap shows V_TEST under load: unarmed, so its
@@ -292,7 +301,6 @@ int channels_continuity_mohm(int ch, struct cont_result *res)
 		}
 	}
 
-	k_mutex_lock(&cont_lock, K_FOREVER);
 	ret = gpio_pin_set_dt(&cont_en, 1);
 	if (!ret) {
 		ret = cont_sample(ch, idle, &s);
@@ -356,6 +364,39 @@ int channels_continuity_mohm(int ch, struct cont_result *res)
 	return 0;
 }
 
+int channels_check_high(int ch, int32_t *off_uv, int32_t *on_uv)
+{
+	int ret;
+
+	if (ch < 0 || ch >= SAT_CHANNELS) {
+		return -EINVAL;
+	}
+
+	k_mutex_lock(&cont_lock, K_FOREVER);
+	if (armed[ch]) {
+		k_mutex_unlock(&cont_lock);
+		return -EBUSY;
+	}
+
+	/* The low side stays off throughout: no current through the igniter. */
+	ret = gpio_pin_set_dt(&enable_low[ch], 0);
+	if (!ret) {
+		k_msleep(CONT_SETTLE_MS);
+		ret = cont_convert_uv(ch, off_uv);
+	}
+	if (!ret) {
+		ret = gpio_pin_set_dt(&enable_high[ch], 1);
+		if (!ret) {
+			k_msleep(CONT_SETTLE_MS);
+			ret = cont_convert_uv(ch, on_uv);
+		}
+		(void)gpio_pin_set_dt(&enable_high[ch], 0);
+	}
+	k_mutex_unlock(&cont_lock);
+
+	return ret;
+}
+
 #else
 
 static int cont_en_init(void)
@@ -364,6 +405,11 @@ static int cont_en_init(void)
 }
 
 int channels_continuity_mohm(int ch, struct cont_result *res)
+{
+	return -ENOTSUP;
+}
+
+int channels_check_high(int ch, int32_t *off_uv, int32_t *on_uv)
 {
 	return -ENOTSUP;
 }
@@ -426,12 +472,24 @@ int channels_init(void)
 	return 0;
 }
 
-/* A channel's low side is on while it pulses or holds a valve, and armed. */
-static int update_low(int ch)
+/*
+ * A channel's switches are on while it pulses or holds a valve, and armed:
+ * high side first going on, low side first going off.
+ */
+static int update_outputs(int ch)
 {
 	bool on = armed[ch] && ((pulsing | valves) & BIT(ch));
+	int ret;
 
-	return gpio_pin_set_dt(&enable_low[ch], on);
+	if (on) {
+		ret = gpio_pin_set_dt(&enable_high[ch], 1);
+		return ret ? ret : gpio_pin_set_dt(&enable_low[ch], 1);
+	}
+
+	ret = gpio_pin_set_dt(&enable_low[ch], 0);
+	int ret_h = gpio_pin_set_dt(&enable_high[ch], 0);
+
+	return ret ? ret : ret_h;
 }
 
 int channels_arm(int ch, bool on)
@@ -442,17 +500,22 @@ int channels_arm(int ch, bool on)
 		return -EINVAL;
 	}
 
-	armed[ch] = on;
 	if (!on) {
+		armed[ch] = false;
 		pulsing &= ~BIT(ch);
 		valves &= ~BIT(ch);
+		return update_outputs(ch);
 	}
-	/* Low side first when disarming, high side first when arming. */
-	ret = on ? gpio_pin_set_dt(&enable_high[ch], 1) : update_low(ch);
-	if (ret) {
-		return ret;
-	}
-	return on ? update_low(ch) : gpio_pin_set_dt(&enable_high[ch], 0);
+
+	/*
+	 * A continuity measurement has the low side on: let it end (up to
+	 * some 0.55 s) before the channel counts as armed and may fire.
+	 */
+	k_mutex_lock(&cont_lock, K_FOREVER);
+	armed[ch] = true;
+	ret = update_outputs(ch);
+	k_mutex_unlock(&cont_lock);
+	return ret;
 }
 
 uint8_t channels_armed_mask(void)
@@ -474,7 +537,7 @@ static void pulse_end_fn(struct k_work *work)
 	pulsing = 0;
 	for (int ch = 0; ch < SAT_CHANNELS; ch++) {
 		if (ended & BIT(ch)) {
-			(void)update_low(ch);
+			(void)update_outputs(ch);
 		}
 	}
 }
@@ -491,7 +554,7 @@ int channels_pulse(uint8_t mask, uint32_t ms)
 	pulsing = mask;
 	for (int ch = 0; ch < SAT_CHANNELS; ch++) {
 		if (mask & BIT(ch)) {
-			(void)update_low(ch);
+			(void)update_outputs(ch);
 		}
 	}
 	k_work_reschedule(&pulse_end, K_MSEC(ms));
@@ -512,7 +575,7 @@ int channels_valves(uint8_t mask)
 	valves = mask;
 	for (int ch = 0; ch < SAT_CHANNELS; ch++) {
 		if (changed & BIT(ch)) {
-			(void)update_low(ch);
+			(void)update_outputs(ch);
 		}
 	}
 	return 0;
@@ -546,14 +609,16 @@ int channels_fire(int ch, uint32_t ms)
 		return -EPERM;
 	}
 
-	ret = gpio_pin_set_dt(&enable_low[ch], 1);
+	ret = channels_pulse(BIT(ch), ms);
 	if (ret) {
 		return ret;
 	}
 
-	k_msleep(ms);
-
-	return gpio_pin_set_dt(&enable_low[ch], 0);
+	/* Blocking, for the shell: until the pulse timer has switched it off. */
+	while (channels_pulsing() & BIT(ch)) {
+		k_msleep(10);
+	}
+	return 0;
 }
 
 int channels_continuity(int ch, int32_t *mv)
