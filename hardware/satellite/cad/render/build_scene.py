@@ -345,7 +345,7 @@ def camera(name, direction, dist, lens, target=CENTER, focus=None, fstop=None, u
 panel_c = Vector(((case_lo.x + case_hi.x) / 2, (case_lo.y + case_hi.y) / 2, case_hi.z - 0.015))
 CAMS = {
     "hero": (camera("hero", (-0.42, 0.85, 0.55), 1.15, 70, fstop=11), (2400, 1600)),
-    "front": (camera("front", (0, 0.04, 1), 0.95, 85, target=panel_c, up='-Y'),
+    "front": (camera("front", (0, 0.04, 1), 0.95, 85, target=panel_c, up='Y'),
               (2200, 1400)),
     "detail": (camera("detail", (-0.3, 0.75, 0.62), 0.42, 100,
                       target=panel_c + Vector((-0.05, 0.01, 0)),
