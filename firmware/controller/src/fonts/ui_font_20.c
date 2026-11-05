@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Size: 20 px
  * Bpp: 1
- * Opts: --no-compress --bpp 1 --format lvgl --size 20 --lv-font-name ui_font_20 --lv-include lvgl.h --font /usr/share/fonts/noto/NotoSans-CondensedBold.ttf -r 0x20-0x7E --font /home/thomas/Tools/zephyrproject/zephyr/../modules/lib/gui/lvgl/scripts/built_in_font/FontAwesome5-Solid+Brands+Regular.woff -r 0xF071,0xF053,0xF054,0xF077,0xF078 -o ui_font_20.c
+ * Opts: --no-compress --bpp 1 --format lvgl --size 20 --lv-font-name ui_font_20 --lv-include lvgl.h --font /usr/share/fonts/noto/NotoSans-CondensedBold.ttf -r 0x20-0x7E --font $ZEPHYR_BASE/../modules/lib/gui/lvgl/scripts/built_in_font/FontAwesome5-Solid+Brands+Regular.woff -r 0xF071,0xF053,0xF054,0xF077,0xF078 -o ui_font_20.c
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE

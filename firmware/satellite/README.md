@@ -30,7 +30,7 @@ panel, which is PyroStage(7 − n):
 | LPUART1 | J2 | Spare UART header |
 
 ```sh
-source ~/Tools/zephyrproject/venv/bin/activate
+source ~/zephyrproject/venv/bin/activate
 west build -b alturia_satellite -d build-board -p always .
 west flash -d build-board                # ST-LINK on J3
 west flash -d build-board -r dfu-util    # or USB DFU: hold BOOT0 (SW1) through a reset

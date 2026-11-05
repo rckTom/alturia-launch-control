@@ -17,8 +17,8 @@ adds what the V4 changes: the console on the native USB port, and the
 RF front-end's control pins.
 
 ```sh
-source ~/Tools/zephyrproject/venv/bin/activate
-export ZEPHYR_BASE=~/Tools/zephyrproject/zephyr
+source ~/zephyrproject/venv/bin/activate
+export ZEPHYR_BASE=~/zephyrproject/zephyr
 west build -b heltec_wifi_lora32_v3/esp32s3/procpu -p always .
 west flash --esp-device /dev/ttyACMx
 ```

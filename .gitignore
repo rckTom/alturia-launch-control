@@ -28,3 +28,6 @@ _autosave-*
 
 # CalculiX working directories
 hardware/controller/sim/**/work/
+
+# editor settings with local paths
+.vscode/

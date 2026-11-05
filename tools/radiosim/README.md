@@ -27,7 +27,7 @@ Build the two firmware images once. radiosim looks for them in these build
 directories:
 
 ```sh
-source ~/Tools/zephyrproject/venv/bin/activate
+source ~/zephyrproject/venv/bin/activate
 cd firmware
 west build -b native_sim/native/64 -d controller/build-radiosim controller -- \
     -DEXTRA_CONF_FILE=radiosim.conf -DEXTRA_DTC_OVERLAY_FILE=radiosim.overlay
