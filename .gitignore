@@ -2,7 +2,7 @@
 /build*/
 firmware/**/build*/
 # native_sim flash image
-firmware/controller_ui/flash.bin
+firmware/controller/flash.bin
 
 # Python
 __pycache__/

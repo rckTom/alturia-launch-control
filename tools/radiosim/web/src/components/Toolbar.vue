@@ -50,7 +50,7 @@ function importFile(ev: Event) {
   <header class="bar">
     <span class="brand"><span class="logo" />radiosim</span>
     <div class="group">
-      <button class="primary" :disabled="!store.canSpawn.ctrl" title="Start a controller_ui instance"
+      <button class="primary" :disabled="!store.canSpawn.ctrl" title="Start a controller instance"
         @click="addNode('ctrl')">+ Controller</button>
       <button class="primary" :disabled="!store.canSpawn.sat" title="Start a satellite instance"
         @click="addNode('sat')">+ Satellite</button>

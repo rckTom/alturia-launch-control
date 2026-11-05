@@ -16,7 +16,7 @@ You can add jammers, foreign LoRa traffic and an attacker radio that injects
 or replays captured frames.
 
 ```
-zephyr.exe (controller_ui) ─┐  UDP 127.0.0.1:7700    ┌─ FastAPI + WebSockets ── browser
+zephyr.exe (controller) ────┐  UDP 127.0.0.1:7700    ┌─ FastAPI + WebSockets ── browser
 zephyr.exe (satellite) × N ─┼──── radio_sim_proto.h ── radiosim: medium, devices, stats,
                             └── pty per node ─────────── process manager, recorder
 ```
@@ -29,7 +29,7 @@ directories:
 ```sh
 source ~/Tools/zephyrproject/venv/bin/activate
 cd firmware
-west build -b native_sim/native/64 -d controller_ui/build-radiosim controller_ui -- \
+west build -b native_sim/native/64 -d controller/build-radiosim controller -- \
     -DEXTRA_CONF_FILE=radiosim.conf -DEXTRA_DTC_OVERLAY_FILE=radiosim.overlay
 west build -b native_sim/native/64 -d satellite/build-sim satellite
 ```

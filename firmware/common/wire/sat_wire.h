@@ -2,7 +2,7 @@
  * Command and status payloads between the controller and its satellites,
  * as they travel inside sealed lsec frames: the commands inside the
  * controller's poll, and each satellite's status in its reply slot.
- * Shared by controller_ui (link_lsec.c, sat_sim.c) and the satellite.
+ * Shared by the controller (link_lsec.c, sat_sim.c) and the satellite.
  *
  * Commands are requests with an id. A satellite executes a request once:
  * a command whose id it executed last is not executed again, and its

@@ -10,7 +10,7 @@ Inputs, all in this directory:
   assembly.glb   ControllerAssembly.FCStd (export_glb.py); sometimes without
                  the PCB link, depending on what FreeCAD had loaded
   pcb.glb        the PCB link target, Controller.FCStd#Part, used then
-  screen.png     a 400x240 frame from controller_ui under radiosim
+  screen.png     a 400x240 frame from the controller firmware under radiosim
   engraving.png  frontcase_engraving.svg engrave layer, 40 px/mm
 
 Writes controller.blend; with --render also renders the cameras to

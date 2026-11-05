@@ -1,7 +1,7 @@
 # Satellite firmware
 
 Zephyr application for the pad-side satellite board. The operator console
-lives in [`../controller_ui/`](../controller_ui/).
+lives in [`../controller/`](../controller/).
 
 ## Status
 

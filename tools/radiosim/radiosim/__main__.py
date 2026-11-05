@@ -21,7 +21,7 @@ from .sim import Sim
 REPO = Path(__file__).resolve().parents[3]
 FIRMWARE = REPO / "firmware"
 DEFAULT_EXES = {
-    "ctrl": FIRMWARE / "controller_ui" / "build-radiosim" / "zephyr" / "zephyr.exe",
+    "ctrl": FIRMWARE / "controller" / "build-radiosim" / "zephyr" / "zephyr.exe",
     "sat": FIRMWARE / "satellite" / "build-sim" / "zephyr" / "zephyr.exe",
 }
 

@@ -388,7 +388,7 @@ async def commands(sim: Sim, loss: float, args_runs_cmd: int = 3, ctrl: str = "c
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--ctrl-exe", type=Path,
-                    default=FIRMWARE / "controller_ui/build-radiosim/zephyr/zephyr.exe")
+                    default=FIRMWARE / "controller/build-radiosim/zephyr/zephyr.exe")
     ap.add_argument("--sat-exe", type=Path, default=FIRMWARE / "satellite/build-sim/zephyr/zephyr.exe")
     ap.add_argument("--runs", type=int, default=5, help="satA restarts to time")
     ap.add_argument("--timeout", type=float, default=60, help="seconds to wait for a join")

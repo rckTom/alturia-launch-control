@@ -16,7 +16,7 @@ a welded relay or a failed MOSFET — can fire an igniter on its own.
 | [hardware/satellite/](hardware/satellite/) | Pad-side satellite: KiCad project and fab outputs in `pcb/`, FreeCAD case and front panel in `cad/` |
 | [hardware/controller/](hardware/controller/) | Handheld controller: KiCad project and fab outputs in `pcb/`, FreeCAD case, D-pad and panel in `cad/`, FEM and SPICE checks in `sim/` |
 | [hardware/parts/](hardware/parts/) | Vendor 3D models (FreeCAD and STEP) and datasheets shared by both, also referenced as KiCad 3D models |
-| [firmware/controller_ui/](firmware/controller_ui/) | Zephyr application for the operator console UI (LVGL, currently built for `native_sim`) |
+| [firmware/controller/](firmware/controller/) | Zephyr application for the operator console UI (LVGL, currently built for `native_sim`) |
 | [firmware/common/lora/](firmware/common/lora/) | LoRa radio backend shared by console and satellite |
 | [firmware/lora_bench/](firmware/lora_bench/) | Ping/pong link test on two Heltec WiFi LoRa 32 V4 boards |
 | [tools/radiosim/](tools/radiosim/) | Radio network simulator: `native_sim` controllers and satellites over a simulated channel, with a web UI |
@@ -49,7 +49,7 @@ uv run --group dev python -m pytest -q
 Console firmware, against a Zephyr tree already set up with west:
 
 ```sh
-west build -b native_sim firmware/controller_ui && ./build/zephyr/zephyr.exe
+west build -b native_sim firmware/controller && ./build/zephyr/zephyr.exe
 ```
 
 Several controllers and satellites on one simulated radio channel, with a web

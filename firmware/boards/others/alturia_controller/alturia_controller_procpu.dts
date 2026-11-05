@@ -53,7 +53,7 @@
 		pwms = <&ledc0 0 PWM_HZ(4000) PWM_POLARITY_NORMAL>;	/* IO46 */
 	};
 
-	/* Key codes are the ones the controller_ui app listens for. */
+	/* Key codes are the ones the controller app listens for. */
 	ctrl_keys: ctrl_keys {
 		compatible = "gpio-keys";
 		debounce-interval-ms = <20>;
