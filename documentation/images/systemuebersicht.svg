@@ -1,82 +1,72 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="720" viewBox="0 0 1240 720" font-family="Noto Sans, DejaVu Sans, Arial, sans-serif">
-<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#333"/></marker></defs>
-<rect width="1240" height="720" fill="#ffffff"/>
-<text x="620" y="42" font-size="26" font-weight="bold" text-anchor="middle" fill="#222">Alturia Launch Control: Systemübersicht</text>
-<rect x="30" y="185" width="340" height="300" rx="14" fill="#eef4fb" stroke="#3a6ea5" stroke-width="2.5"/>
-<text x="200.0" y="219" font-size="21" font-weight="bold" text-anchor="middle" fill="#222">Controller (Bedienteil)</text>
-<line x1="46" y1="233" x2="354" y2="233" stroke="#3a6ea5" stroke-width="1.5"/>
-<text x="52" y="261" font-size="16.5" fill="#333">• ESP32-S3, Zephyr RTOS</text>
-<text x="52" y="288" font-size="16.5" fill="#333">• Sharp Memory Display</text>
-<text x="52" y="315" font-size="16.5" fill="#333">• Steuerkreuz, Tasten ARM, FIRE, ...</text>
-<text x="52" y="342" font-size="16.5" fill="#333">• LoRa-Funkmodul SX1262</text>
-<text x="52" y="369" font-size="16.5" fill="#333">• 1S-LiPo 4000 mAh</text>
-<text x="52" y="396" font-size="16.5" fill="#333">• Ladeschaltung, USB-C</text>
-<text x="52" y="423" font-size="16.5" fill="#333">• 3D-gedrucktes Gehäuse</text>
-<rect x="560" y="70" width="370" height="270" rx="14" fill="#fdf3e7" stroke="#c07a1e" stroke-width="2.5"/>
-<text x="745.0" y="104" font-size="21" font-weight="bold" text-anchor="middle" fill="#222">Satellit A</text>
-<line x1="576" y1="118" x2="914" y2="118" stroke="#c07a1e" stroke-width="1.5"/>
-<text x="582" y="146" font-size="16.5" fill="#333">• STM32G474, Zephyr RTOS</text>
-<text x="582" y="173" font-size="16.5" fill="#333">• LoRa-Funkmodul Wio-SX1262</text>
-<text x="582" y="200" font-size="16.5" fill="#333">• Schlüsselschalter + Arm-Relais</text>
-<text x="582" y="227" font-size="16.5" fill="#333">• 6 Pyrokanäle (Highside + Lowside)</text>
-<text x="582" y="254" font-size="16.5" fill="#333">• Durchgangsprüfung, 24-Bit-ADC</text>
-<text x="582" y="281" font-size="16.5" fill="#333">• Taster + LEDs, LiFePO4 6 Ah</text>
-<line x1="930" y1="120" x2="1010" y2="120" stroke="#c07a1e" stroke-width="2"/>
-<circle cx="1022" cy="120" r="12" fill="#fff" stroke="#c07a1e" stroke-width="2"/>
-<text x="1022" y="125.5" font-size="14" text-anchor="middle" fill="#333">1</text>
-<line x1="930" y1="156" x2="1010" y2="156" stroke="#c07a1e" stroke-width="2"/>
-<circle cx="1022" cy="156" r="12" fill="#fff" stroke="#c07a1e" stroke-width="2"/>
-<text x="1022" y="161.5" font-size="14" text-anchor="middle" fill="#333">2</text>
-<line x1="930" y1="192" x2="1010" y2="192" stroke="#c07a1e" stroke-width="2"/>
-<circle cx="1022" cy="192" r="12" fill="#fff" stroke="#c07a1e" stroke-width="2"/>
-<text x="1022" y="197.5" font-size="14" text-anchor="middle" fill="#333">3</text>
-<line x1="930" y1="228" x2="1010" y2="228" stroke="#c07a1e" stroke-width="2"/>
-<circle cx="1022" cy="228" r="12" fill="#fff" stroke="#c07a1e" stroke-width="2"/>
-<text x="1022" y="233.5" font-size="14" text-anchor="middle" fill="#333">4</text>
-<line x1="930" y1="264" x2="1010" y2="264" stroke="#c07a1e" stroke-width="2"/>
-<circle cx="1022" cy="264" r="12" fill="#fff" stroke="#c07a1e" stroke-width="2"/>
-<text x="1022" y="269.5" font-size="14" text-anchor="middle" fill="#333">5</text>
-<line x1="930" y1="300" x2="1010" y2="300" stroke="#c07a1e" stroke-width="2"/>
-<circle cx="1022" cy="300" r="12" fill="#fff" stroke="#c07a1e" stroke-width="2"/>
-<text x="1022" y="305.5" font-size="14" text-anchor="middle" fill="#333">6</text>
-<text x="1050" y="188" font-size="16" fill="#333">Zünder</text>
-<text x="1050" y="212" font-size="16" fill="#333">oder Ventile</text>
-<text x="1050" y="236" font-size="16" fill="#333">(Hybrid)</text>
-<rect x="560" y="390" width="370" height="270" rx="14" fill="#fdf3e7" stroke="#c07a1e" stroke-width="2.5"/>
-<text x="745.0" y="424" font-size="21" font-weight="bold" text-anchor="middle" fill="#222">Satellit B</text>
-<line x1="576" y1="438" x2="914" y2="438" stroke="#c07a1e" stroke-width="1.5"/>
-<text x="582" y="466" font-size="16.5" fill="#333">• STM32G474, Zephyr RTOS</text>
-<text x="582" y="493" font-size="16.5" fill="#333">• LoRa-Funkmodul Wio-SX1262</text>
-<text x="582" y="520" font-size="16.5" fill="#333">• Schlüsselschalter + Arm-Relais</text>
-<text x="582" y="547" font-size="16.5" fill="#333">• 6 Pyrokanäle (Highside + Lowside)</text>
-<text x="582" y="574" font-size="16.5" fill="#333">• Durchgangsprüfung, 24-Bit-ADC</text>
-<text x="582" y="601" font-size="16.5" fill="#333">• Taster + LEDs, LiFePO4 6 Ah</text>
-<line x1="930" y1="440" x2="1010" y2="440" stroke="#c07a1e" stroke-width="2"/>
-<circle cx="1022" cy="440" r="12" fill="#fff" stroke="#c07a1e" stroke-width="2"/>
-<text x="1022" y="445.5" font-size="14" text-anchor="middle" fill="#333">1</text>
-<line x1="930" y1="476" x2="1010" y2="476" stroke="#c07a1e" stroke-width="2"/>
-<circle cx="1022" cy="476" r="12" fill="#fff" stroke="#c07a1e" stroke-width="2"/>
-<text x="1022" y="481.5" font-size="14" text-anchor="middle" fill="#333">2</text>
-<line x1="930" y1="512" x2="1010" y2="512" stroke="#c07a1e" stroke-width="2"/>
-<circle cx="1022" cy="512" r="12" fill="#fff" stroke="#c07a1e" stroke-width="2"/>
-<text x="1022" y="517.5" font-size="14" text-anchor="middle" fill="#333">3</text>
-<line x1="930" y1="548" x2="1010" y2="548" stroke="#c07a1e" stroke-width="2"/>
-<circle cx="1022" cy="548" r="12" fill="#fff" stroke="#c07a1e" stroke-width="2"/>
-<text x="1022" y="553.5" font-size="14" text-anchor="middle" fill="#333">4</text>
-<line x1="930" y1="584" x2="1010" y2="584" stroke="#c07a1e" stroke-width="2"/>
-<circle cx="1022" cy="584" r="12" fill="#fff" stroke="#c07a1e" stroke-width="2"/>
-<text x="1022" y="589.5" font-size="14" text-anchor="middle" fill="#333">5</text>
-<line x1="930" y1="620" x2="1010" y2="620" stroke="#c07a1e" stroke-width="2"/>
-<circle cx="1022" cy="620" r="12" fill="#fff" stroke="#c07a1e" stroke-width="2"/>
-<text x="1022" y="625.5" font-size="14" text-anchor="middle" fill="#333">6</text>
-<text x="1050" y="508" font-size="16" fill="#333">Zünder</text>
-<text x="1050" y="532" font-size="16" fill="#333">oder Ventile</text>
-<text x="1050" y="556" font-size="16" fill="#333">(Hybrid)</text>
-<text x="745" y="700" font-size="17" font-style="italic" text-anchor="middle" fill="#555">… bis zu 8 Satelliten, zusammen bis zu 48 Startplätze</text>
-<line x1="374" y1="300" x2="552" y2="205" stroke="#333" stroke-width="2.5" stroke-dasharray="9,6" marker-start="url(#ar)" marker-end="url(#ar)"/>
-<line x1="374" y1="370" x2="552" y2="525" stroke="#333" stroke-width="2.5" stroke-dasharray="9,6" marker-start="url(#ar)" marker-end="url(#ar)"/>
-<rect x="394" y="291" width="152" height="88" rx="8" fill="#ffffff" stroke="#999" stroke-width="1"/>
-<text x="470" y="316" font-size="15" text-anchor="middle" fill="#222" font-weight="bold">LoRa 869,85 MHz</text>
-<text x="470" y="341" font-size="15" text-anchor="middle" fill="#222">verschlüsselt</text>
-<text x="470" y="366" font-size="15" text-anchor="middle" fill="#222">Abfrage alle 1,2 s</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" font-family="Noto Sans, DejaVu Sans, Arial, sans-serif" fill="#111">
+<rect width="1200" height="620" fill="#fff"/>
+
+<text x="40" y="62" font-size="22" font-weight="600">Systemübersicht</text>
+
+<!-- Funkstrecken -->
+<g stroke="#111" stroke-width="1.5" stroke-dasharray="7 5" fill="none">
+  <line x1="340" y1="290" x2="600" y2="195"/>
+  <line x1="340" y1="330" x2="600" y2="415"/>
+  <line x1="340" y1="350" x2="600" y2="560"/>
+</g>
+<text x="440" y="306" font-size="14" font-weight="600">LoRa-Funk</text>
+<text x="440" y="324" font-size="13" fill="#555">869,85 MHz, verschlüsselt</text>
+
+<!-- Controller -->
+<rect x="40" y="200" width="300" height="190" fill="#fff" stroke="#111" stroke-width="1.5"/>
+<line x1="40" y1="238" x2="340" y2="238" stroke="#111" stroke-width="1"/>
+<text x="56" y="226" font-size="17" font-weight="600">Controller</text>
+<g font-size="14" fill="#333">
+  <text x="56" y="264">ESP32-S3, Zephyr RTOS</text>
+  <text x="56" y="288">Sharp Memory Display</text>
+  <text x="56" y="312">Steuerkreuz, ARM, FIRE, FILL, VENT</text>
+  <text x="56" y="336">LoRa-Funkmodul</text>
+  <text x="56" y="360">1S-LiPo, Laden über USB-C</text>
+</g>
+
+<!-- Satellit A -->
+<rect x="600" y="100" width="320" height="190" fill="#fff" stroke="#111" stroke-width="1.5"/>
+<line x1="600" y1="138" x2="920" y2="138" stroke="#111" stroke-width="1"/>
+<text x="616" y="126" font-size="17" font-weight="600">Satellit A</text>
+<g font-size="14" fill="#333">
+  <text x="616" y="164">STM32G474, Zephyr RTOS</text>
+  <text x="616" y="188">LoRa-Funkmodul</text>
+  <text x="616" y="212">Schlüsselschalter, Arm-Relais</text>
+  <text x="616" y="236">6 Pyrokanäle mit Durchgangsprüfung</text>
+  <text x="616" y="260">LiFePO4-Akku 6 Ah</text>
+</g>
+
+<!-- Satellit B -->
+<rect x="600" y="320" width="320" height="190" fill="#fff" stroke="#111" stroke-width="1.5"/>
+<line x1="600" y1="358" x2="920" y2="358" stroke="#111" stroke-width="1"/>
+<text x="616" y="346" font-size="17" font-weight="600">Satellit B</text>
+<g font-size="14" fill="#333">
+  <text x="616" y="384">STM32G474, Zephyr RTOS</text>
+  <text x="616" y="408">LoRa-Funkmodul</text>
+  <text x="616" y="432">Schlüsselschalter, Arm-Relais</text>
+  <text x="616" y="456">6 Pyrokanäle mit Durchgangsprüfung</text>
+  <text x="616" y="480">LiFePO4-Akku 6 Ah</text>
+</g>
+
+<!-- weitere Satelliten -->
+<rect x="600" y="540" width="320" height="40" fill="#fff" stroke="#888" stroke-width="1.2" stroke-dasharray="6 4"/>
+<text x="616" y="565" font-size="14" fill="#555">weitere Satelliten, bis zu 8 insgesamt</text>
+
+<!-- Kanäle -->
+<g stroke="#111" stroke-width="1.5">
+  <line x1="920" y1="133" x2="980" y2="133"/><line x1="920" y1="158" x2="980" y2="158"/><line x1="920" y1="183" x2="980" y2="183"/>
+  <line x1="920" y1="208" x2="980" y2="208"/><line x1="920" y1="233" x2="980" y2="233"/><line x1="920" y1="258" x2="980" y2="258"/>
+  <line x1="920" y1="353" x2="980" y2="353"/><line x1="920" y1="378" x2="980" y2="378"/><line x1="920" y1="403" x2="980" y2="403"/>
+  <line x1="920" y1="428" x2="980" y2="428"/><line x1="920" y1="453" x2="980" y2="453"/><line x1="920" y1="478" x2="980" y2="478"/>
+</g>
+<g fill="#fff" stroke="#111" stroke-width="1.5">
+  <circle cx="983.5" cy="133" r="3.5"/><circle cx="983.5" cy="158" r="3.5"/><circle cx="983.5" cy="183" r="3.5"/>
+  <circle cx="983.5" cy="208" r="3.5"/><circle cx="983.5" cy="233" r="3.5"/><circle cx="983.5" cy="258" r="3.5"/>
+  <circle cx="983.5" cy="353" r="3.5"/><circle cx="983.5" cy="378" r="3.5"/><circle cx="983.5" cy="403" r="3.5"/>
+  <circle cx="983.5" cy="428" r="3.5"/><circle cx="983.5" cy="453" r="3.5"/><circle cx="983.5" cy="478" r="3.5"/>
+</g>
+<g font-size="13" fill="#555">
+  <text x="1002" y="192">6 Kanäle:</text><text x="1002" y="210">Zünder oder</text><text x="1002" y="228">Ventile</text>
+  <text x="1002" y="412">6 Kanäle:</text><text x="1002" y="430">Zünder oder</text><text x="1002" y="448">Ventile</text>
+</g>
 </svg>
