@@ -45,7 +45,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "DpadMembrane.FCStd")
 FRONTCASE = os.path.join(HERE, "FrontCase.FCStd")
 SWITCH_STEP = os.path.normpath(os.path.join(
-    HERE, "../controller/3d/SW_Push_1P1T_XKB_TS-1187A.step"))
+    HERE, "../pcb/3d/SW_Push_1P1T_XKB_TS-1187A.step"))
 
 # ---- case (from FrontCase / controller.kicad_pcb) -------------------------
 PANEL_OUT = 13.0

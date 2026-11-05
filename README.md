@@ -12,7 +12,10 @@ a welded relay or a failed MOSFET — can fire an igniter on its own.
 | Path | Content |
 |---|---|
 | [design/](design/) | Design documents. `satellite.md` is the original brief; `satellite_schematic_spec.md` is the netlist-level specification |
-| [hardware/satellite/](hardware/satellite/) | KiCad project for the pad-side satellite board |
+| [documentation/](documentation/) | Write-ups for others (forum post) and their images |
+| [hardware/satellite/](hardware/satellite/) | Pad-side satellite: KiCad project and fab outputs in `pcb/`, FreeCAD case and front panel in `cad/` |
+| [hardware/controller/](hardware/controller/) | Handheld controller: KiCad project and fab outputs in `pcb/`, FreeCAD case, D-pad and panel in `cad/`, FEM and SPICE checks in `sim/` |
+| [hardware/parts/](hardware/parts/) | Vendor 3D models (FreeCAD and STEP) and datasheets shared by both, also referenced as KiCad 3D models |
 | [firmware/controller_ui/](firmware/controller_ui/) | Zephyr application for the operator console UI (LVGL, currently built for `native_sim`) |
 | [firmware/common/lora/](firmware/common/lora/) | LoRa radio backend shared by console and satellite |
 | [firmware/lora_bench/](firmware/lora_bench/) | Ping/pong link test on two Heltec WiFi LoRa 32 V4 boards |

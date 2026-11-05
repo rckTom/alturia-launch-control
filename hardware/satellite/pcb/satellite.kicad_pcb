@@ -153,7 +153,7 @@
 			(mirror no)
 			(drillshape 0)
 			(scaleselection 1)
-			(outputdirectory "gerber/")
+			(outputdirectory "production/gerber/")
 		)
 	)
 	(variants
@@ -3795,7 +3795,7 @@
 			(uuid "f1b0c22c-dcc9-438f-b33e-feccae5a24c3")
 		)
 		(embedded_fonts no)
-		(model "${KIPRJMOD}/cad/Panasonic_ACTL3CR3V-Body.step"
+		(model "${KIPRJMOD}/../../parts/Panasonic_ACTL3CR3V-Body.step"
 			(offset
 				(xyz 0 0 0)
 			)
@@ -43995,7 +43995,7 @@
 				(xyz 0 0 0)
 			)
 		)
-		(model "/home/thomas/Projects/rocketry/launch_controller/hardware/satellite/3d/easyeda.3dshapes/USB-C_SMD-TYPE-C-31-M-12_1.step"
+		(model "${KIPRJMOD}/../../parts/USB-C_SMD-TYPE-C-31-M-12_1.step"
 			(offset
 				(xyz 0 -1.1 0)
 			)
@@ -52327,7 +52327,7 @@
 			(uuid "103715ef-2786-4983-a7f9-5e54f866fbbc")
 		)
 		(embedded_fonts no)
-		(model "${KIPRJMOD}/cad/Panasonic_ACTL3CR3V-Body.step"
+		(model "${KIPRJMOD}/../../parts/Panasonic_ACTL3CR3V-Body.step"
 			(offset
 				(xyz 0 0 0)
 			)
@@ -56394,7 +56394,7 @@
 			(uuid "80bbc662-5206-4401-b1e2-185cfa7f719b")
 		)
 		(embedded_fonts no)
-		(model "${KIPRJMOD}/cad/banana_jack.step"
+		(model "${KIPRJMOD}/../../parts/banana_jack.step"
 			(offset
 				(xyz 0 0 -7.4)
 			)
@@ -56405,7 +56405,7 @@
 				(xyz -0 90 -0)
 			)
 		)
-		(model "${KIPRJMOD}/cad/banana_jack.step"
+		(model "${KIPRJMOD}/../../parts/banana_jack.step"
 			(offset
 				(xyz 9.5 -8.025 -7.4)
 			)
@@ -57327,7 +57327,7 @@
 			(uuid "06142a63-e2e6-4a23-a24a-5ad4cdfec4a6")
 		)
 		(embedded_fonts no)
-		(model "${KIPRJMOD}/cad/banana_jack.step"
+		(model "${KIPRJMOD}/../../parts/banana_jack.step"
 			(offset
 				(xyz 0 0 -7.4)
 			)
@@ -57338,7 +57338,7 @@
 				(xyz -0 90 -0)
 			)
 		)
-		(model "${KIPRJMOD}/cad/banana_jack.step"
+		(model "${KIPRJMOD}/../../parts/banana_jack.step"
 			(offset
 				(xyz 9.5 -8.025 -7.4)
 			)
@@ -57536,7 +57536,7 @@
 			(uuid "34e98d7c-e1a1-402a-8747-497ee3b80dbb")
 		)
 		(embedded_fonts no)
-		(model "${KIPRJMOD}/cad/banana_jack.step"
+		(model "${KIPRJMOD}/../../parts/banana_jack.step"
 			(offset
 				(xyz 0 0 -7.4)
 			)
@@ -57547,7 +57547,7 @@
 				(xyz -0 90 -0)
 			)
 		)
-		(model "${KIPRJMOD}/cad/banana_jack.step"
+		(model "${KIPRJMOD}/../../parts/banana_jack.step"
 			(offset
 				(xyz 9.5 -8.025 -7.4)
 			)
@@ -57991,7 +57991,7 @@
 			(uuid "cd663744-5ba6-4b38-92f0-97f012a92780")
 		)
 		(embedded_fonts no)
-		(model "${KIPRJMOD}/cad/banana_jack.step"
+		(model "${KIPRJMOD}/../../parts/banana_jack.step"
 			(offset
 				(xyz 0 0 -7.4)
 			)
@@ -58002,7 +58002,7 @@
 				(xyz -0 90 -0)
 			)
 		)
-		(model "${KIPRJMOD}/cad/banana_jack.step"
+		(model "${KIPRJMOD}/../../parts/banana_jack.step"
 			(offset
 				(xyz 9.5 -8.025 -7.4)
 			)
@@ -58200,7 +58200,7 @@
 			(uuid "d12fb276-9116-4cd1-8c80-b666686c8995")
 		)
 		(embedded_fonts no)
-		(model "${KIPRJMOD}/cad/banana_jack.step"
+		(model "${KIPRJMOD}/../../parts/banana_jack.step"
 			(offset
 				(xyz 0 0 -7.4)
 			)
@@ -58211,7 +58211,7 @@
 				(xyz -0 90 -0)
 			)
 		)
-		(model "${KIPRJMOD}/cad/banana_jack.step"
+		(model "${KIPRJMOD}/../../parts/banana_jack.step"
 			(offset
 				(xyz 9.5 -8.025 -7.4)
 			)
@@ -59470,7 +59470,7 @@
 			(uuid "cc5996af-a57a-4b82-92bd-f4ab49b04078")
 		)
 		(embedded_fonts no)
-		(model "${KIPRJMOD}/cad/banana_jack.step"
+		(model "${KIPRJMOD}/../../parts/banana_jack.step"
 			(offset
 				(xyz 0 0 -7.4)
 			)
@@ -59481,7 +59481,7 @@
 				(xyz -0 90 -0)
 			)
 		)
-		(model "${KIPRJMOD}/cad/banana_jack.step"
+		(model "${KIPRJMOD}/../../parts/banana_jack.step"
 			(offset
 				(xyz 9.5 -8.025 -7.4)
 			)

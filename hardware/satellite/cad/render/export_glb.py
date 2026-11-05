@@ -23,7 +23,7 @@ try:
     HERE = Path(__file__).resolve().parent
 except NameError:   # some FreeCAD versions run scripts without __file__
     HERE = Path.cwd()
-doc = App.openDocument(str(HERE.parent / "Case" / "SatelliteAssembly.FCStd"))
+doc = App.openDocument(str(HERE.parent / "SatelliteAssembly.FCStd"))
 doc.recompute()
 g = doc.getObject
 a1, a2 = g("Assembly001"), g("Assembly002")

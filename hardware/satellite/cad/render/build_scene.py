@@ -33,7 +33,7 @@ P = json.loads((HERE / "placements.json").read_text())
 # Case shell spans z 2.04..119.44 in the assembly; turned over, its floor
 # (assembly z = 119.44) goes to z = 0.
 UPRIGHT = Matrix.Translation((0, 0, 119.44 * MM)) @ Matrix.Rotation(math.pi, 4, 'X')
-# Panel engraving in front_palte Body coordinates: front view is
+# Panel engraving in front_plate Body coordinates: front view is
 # (45 - x, -(y + 38.5)) mm, 220 x 117 mm, visible face at z = 0.
 PANEL_W, PANEL_H = 220.0, 117.0
 

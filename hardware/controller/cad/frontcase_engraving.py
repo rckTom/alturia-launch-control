@@ -3,7 +3,7 @@
 
 Writes frontcase_engraving_src.svg (live text) and, via Inkscape, the
 laser-ready frontcase_engraving.svg (text converted to paths). Same style as
-the satellite panel (hardware/satellite/cad/Case/frontpanel_engraving.py).
+the satellite panel (hardware/satellite/cad/frontpanel_engraving.py).
 
 Coordinates are mm in FrontCase.FCStd's Body frame, seen from the front
 (+z): SVG x = body x, SVG y = -body y. The origin is the centre of the flat

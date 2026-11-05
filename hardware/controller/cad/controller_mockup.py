@@ -11,8 +11,8 @@ front face), seen from the front. Layout values below are "from the top"
 
 The case shells are plain Part solids meant to be redrawn in PartDesign once
 the layout settles; the bought parts are App::Links to their own models
-(Delock 22032 from the satellite); the Sharp breakout is copied in from
-Adafruit_4694_Sharp27.FCStd so it can be coloured.
+(Delock 22032 from hardware/parts); the Sharp breakout is copied in from
+parts/Adafruit_4694_Sharp27.FCStd so it can be coloured.
 """
 import math
 import os
@@ -23,7 +23,7 @@ import Part
 from FreeCAD import Vector as V, Rotation as Rot, Placement as Pl
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SAT_CAD = os.path.normpath(os.path.join(HERE, "../../satellite/cad"))
+PARTS = os.path.normpath(os.path.join(HERE, "../../parts"))
 OUT = os.path.join(HERE, "controller_mockup.FCStd")
 FONT = "/usr/share/fonts/noto/NotoSans-SemiBold.ttf"
 
@@ -123,9 +123,9 @@ def build():
     doc.saveAs(OUT)  # external links need a saved owner for relative paths
     tmp = App.newDocument("mockup_tmp")
 
-    delock_doc = App.openDocument(os.path.join(SAT_CAD, "Delock_22032.FCStd"))
+    delock_doc = App.openDocument(os.path.join(PARTS, "Delock_22032.FCStd"))
     delock = delock_doc.getObject("Delock_22032")
-    disp_doc = App.openDocument(os.path.join(HERE, "Adafruit_4694_Sharp27.FCStd"))
+    disp_doc = App.openDocument(os.path.join(PARTS, "Adafruit_4694_Sharp27.FCStd"))
 
     # ---- shell ----------------------------------------------------------
     outer = rounded_rect(W, H, R_PLAN, -D, 0)

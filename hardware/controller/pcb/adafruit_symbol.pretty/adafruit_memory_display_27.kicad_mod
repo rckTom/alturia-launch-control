@@ -341,7 +341,7 @@
 		)
 	)
 	(embedded_fonts no)
-	(model "/home/thomas/Projects/rocketry/launch_controller/hardware/controller/cad/Adafruit_4694_Sharp27.step"
+	(model "${KIPRJMOD}/../../parts/Adafruit_4694_Sharp27.step"
 		(offset
 			(xyz 0 -25.5 4)
 		)

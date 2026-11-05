@@ -22,7 +22,7 @@ Close eeschema first — the exports below read the files, but `.lck` files pres
 mean someone has the project open and may be mid-edit.
 
 ```sh
-cd hardware/satellite
+cd hardware/satellite/pcb
 kicad-cli sch erc --severity-all satellite.kicad_sch
 kicad-cli sch export netlist --format kicadsexpr -o satellite.net satellite.kicad_sch
 ```
@@ -42,7 +42,7 @@ and `tests/` asserts the design criteria over them. It does **not** read the
 schematic, so the two have to be kept in step by hand.
 
 ```sh
-uv run --group hardware python -m pytest hardware/satellite/tests -q
+uv run --group hardware python -m pytest hardware/satellite/pcb/tests -q
 ```
 
 A passing test is weaker evidence than it looks: the current one checks only the
@@ -50,6 +50,9 @@ ADC absolute maximum, not the measurable range, so it passes on a divider that
 already saturates. See spec §16.13.
 
 ## Layout of the files
+
+The KiCad project is in `pcb/`; paths below are relative to it unless they
+start with `../`.
 
 | File | Content |
 |---|---|
@@ -59,6 +62,9 @@ already saturates. See spec §16.13.
 | `05_channel.kicad_sch` | Rev A output channel. No longer instanced; kept for reference |
 | `design.py`, `tests/` | Design parameters and checks over them |
 | `library/` | LCSC symbols/footprints imported with `easyeda2kicad` |
+| `production/` | Gerbers, ODB++, JLCPCB BOM and placement files |
+| `../cad/` | FreeCAD case, front panel (engraving, UV DTF sheets), print meshes, renders |
+| `../../parts/` | Vendor 3D models shared with the controller (also used as KiCad 3D models) |
 
 Reference designators are grouped by sheet (2xx power, 3xx MCU, 4xx radio,
 5xx arm, 12xx sense). The six channel instances use 6xx, 7xx, 8xx, 9xx, 13xx and
@@ -67,7 +73,7 @@ an artefact of how the instances were created, not a scheme.
 
 ## Stale artefacts
 
-`bom_jlcpcb.csv` and `bom_jlcpcb.md` were exported before the rev B channel
+`pcb/production/bom_jlcpcb.csv` was exported before the rev B channel
 existed and describe the rev A design. No generator remains to re-export them;
 regenerate from KiCad when the schematic settles.
 

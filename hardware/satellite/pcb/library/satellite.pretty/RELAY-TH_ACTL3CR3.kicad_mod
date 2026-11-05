@@ -285,7 +285,7 @@
 		(uuid "e8e6c592-e48c-41f0-abbe-f9f9323841ab")
 	)
 	(embedded_fonts no)
-	(model "${KIPRJMOD}/cad/Panasonic_ACTL3CR3V-Body.step"
+	(model "${KIPRJMOD}/../../parts/Panasonic_ACTL3CR3V-Body.step"
 		(offset
 			(xyz 0 0 0)
 		)

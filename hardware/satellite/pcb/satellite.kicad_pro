@@ -595,7 +595,7 @@
     "last_paths": {
       "idf": "",
       "netlist": "",
-      "plot": "gerber/",
+      "plot": "production/gerber/",
       "specctra_dsn": "",
       "step": "satellite.step",
       "vrml": ""

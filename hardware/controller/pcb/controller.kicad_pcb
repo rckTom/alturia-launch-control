@@ -1803,7 +1803,7 @@
 			)
 		)
 		(embedded_fonts no)
-		(model "/home/thomas/Projects/rocketry/launch_controller/hardware/controller/cad/Adafruit_4694_Sharp27.step"
+		(model "${KIPRJMOD}/../../parts/Adafruit_4694_Sharp27.step"
 			(offset
 				(xyz 0 -25.5 4)
 			)
@@ -7571,7 +7571,7 @@
 				(xyz 0 0 0)
 			)
 		)
-		(model "${KIPRJMOD}/3d/SKRTLA.STEP"
+		(model "${KIPRJMOD}/../../parts/SKRTLA.STEP"
 			(offset
 				(xyz 0 -1 1.7)
 			)
@@ -14303,7 +14303,7 @@
 				(xyz 0 0 0)
 			)
 		)
-		(model "/home/thomas/Projects/rocketry/launch_controller/hardware/USB-C_SMD-TYPE-C-31-M-12_1.step"
+		(model "${KIPRJMOD}/../../parts/USB-C_SMD-TYPE-C-31-M-12_1.step"
 			(offset
 				(xyz 0 -1.1 0)
 			)

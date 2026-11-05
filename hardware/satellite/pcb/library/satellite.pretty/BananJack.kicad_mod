@@ -150,7 +150,7 @@
 		(uuid "732b3b2d-da5b-4502-91bb-71a79e059ceb")
 	)
 	(embedded_fonts no)
-	(model "${KIPRJMOD}/cad/banana_jack.step"
+	(model "${KIPRJMOD}/../../parts/banana_jack.step"
 		(offset
 			(xyz 0 0 -7.4)
 		)
@@ -161,7 +161,7 @@
 			(xyz -0 90 -0)
 		)
 	)
-	(model "${KIPRJMOD}/cad/banana_jack.step"
+	(model "${KIPRJMOD}/../../parts/banana_jack.step"
 		(offset
 			(xyz 9.5 -8.025 -7.4)
 		)

@@ -25,5 +25,5 @@ hardware = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["hardware/satellite/tests"]
-pythonpath = ["hardware/satellite"]
+testpaths = ["hardware/satellite/pcb/tests"]
+pythonpath = ["hardware/satellite/pcb"]

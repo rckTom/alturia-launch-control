@@ -10,7 +10,7 @@ is a TechDraw view from behind (the PCB sits on +z in front_plate_assembly,
 parts point to -z through the panel) and upside down relative to the
 mounted panel, so every y from that drawing is negated here. The drawing
 predates later reworks; read the holes from the `Body` solid of
-front_palte.FCStd instead: front-view mm = (45 - x, -(y + 38.5)).
+front_plate.FCStd instead: front-view mm = (45 - x, -(y + 38.5)).
 
 The fuse holder, the rocker and the LEDs sit in parts with a front flange
 larger than their panel hole (FuseGrommet, the rocker bezel, led_grommet),

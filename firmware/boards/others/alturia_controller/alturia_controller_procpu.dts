@@ -1,6 +1,6 @@
 /*
  * Alturia Launch Control controller, rev A
- * (hardware/controller/controller_pcb, ESP32-S3-WROOM-1-N16R2).
+ * (hardware/controller/pcb, ESP32-S3-WROOM-1-N16R2).
  *
  * Console and shell are on USB-C, which goes straight to the ESP32-S3's
  * USB Serial/JTAG. UART0's pins drive the LCD, so there is no UART.
