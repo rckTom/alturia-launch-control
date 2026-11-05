@@ -1,1 +1,30 @@
-*build*
+# Zephyr / west build directories (build/, build-sim/, build-ui-flash/, ...)
+/build*/
+firmware/**/build*/
+# native_sim flash image
+firmware/controller_ui/flash.bin
+
+# Python
+__pycache__/
+.venv/
+.pytest_cache/
+
+# FreeCAD and Blender backups; GLB exports and .blend scenes are regenerated
+# by the render/ scripts
+*.FCStd1
+*.blend
+*.blend1
+*.glb
+
+# KiCad
+*-backups/
+*.kicad_prl
+~*.lck
+*.bak
+fp-info-cache
+*.net
+_autosave-*
+*-unsaved-export-*
+
+# CalculiX working directories
+hardware/controller/sim/**/work/
