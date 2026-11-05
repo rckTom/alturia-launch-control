@@ -16,7 +16,7 @@ struct lsec_event;
 /*
  * The secure LoRa link to the console is ../common/link/sat_link.h. This
  * is its local half: the pairing gesture on the button, the pattern on the
- * channel LEDs, and the confirmation. See design/radio_security.md.
+ * channel LEDs, and the confirmation. See documentation/radio_link.md.
  */
 int pair_ui_init(void);
 /* Start pairing mode, if the satellite is SAFE. */

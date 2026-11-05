@@ -59,7 +59,7 @@ encrypted LoRa link.
 ## What's in the repo
 
 ```text
-design/          design brief, schematic spec, radio security notes, logos
+design/logo/     logo for this README and the controller splash screen
 documentation/   write-ups: radio link, diagrams, photos
 hardware/
   controller/    pcb/ KiCad and fab outputs, cad/ FreeCAD case, D-pad, panel art,
@@ -80,8 +80,6 @@ Good places to start:
 - [documentation/radio_link.md](documentation/radio_link.md): the radio
   link as implemented, covering pairing, keys, frame format, channel access
   and commands.
-- [design/satellite_schematic_spec.md](design/satellite_schematic_spec.md):
-  the satellite circuit at netlist level.
 - [tools/radiosim/README.md](tools/radiosim/README.md): running the network
   without hardware.
 
@@ -128,9 +126,9 @@ test the system without igniters before you trust it at the pad.
   License v3.0 only, see [LICENSE](LICENSE).
 - Hardware (`hardware/`): CERN Open Hardware Licence v2, strongly reciprocal,
   see [hardware/LICENSE](hardware/LICENSE).
-- Documentation (`documentation/`, `design/` except `design/logo/`):
+- Documentation (`documentation/`):
   [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
-- The name "Alturia" and the logos in `design/logo/` are not covered by these
+- The name "Alturia" and the logo in `design/logo/` are not covered by these
   licenses: all rights reserved, also where they appear in hardware files
   such as the front panel artwork.
 - Third-party 3D models and drawings (`hardware/parts/` and vendor models in

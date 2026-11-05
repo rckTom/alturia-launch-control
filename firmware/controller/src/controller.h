@@ -156,7 +156,7 @@ enum pair_phase {
 #define PAIR_MAX_FOUND 4
 
 /*
- * Pairing one satellite slot, see design/radio_security.md. The operator
+ * Pairing one satellite slot, see documentation/radio_link.md. The operator
  * compares the pattern with the satellite's channel LEDs and confirms on
  * both devices.
  */

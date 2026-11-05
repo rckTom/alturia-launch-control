@@ -2,7 +2,7 @@
 #
 # Link security (pairing, sessions, group key) and channel access timing. Include from an app's
 # CMakeLists.txt after find_package(Zephyr). Needs CONFIG_PSA_CRYPTO and the
-# PSA_WANT set listed in design/radio_security.md; lsec_store.c also needs
+# PSA_WANT set listed in documentation/radio_link.md; lsec_store.c also needs
 # CONFIG_SETTINGS.
 #
 # Set LSEC_LINK to "sat" and/or "ctrl" before including to also build that

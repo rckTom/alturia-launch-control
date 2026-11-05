@@ -3,7 +3,7 @@
  *
  * Implemented by link_lsec.c on the secure link in ../common/link: every
  * command and status travels sealed (AES-CCM, replay-checked) between
- * paired devices, see design/radio_security.md. The frames go over the
+ * paired devices, see documentation/radio_link.md. The frames go over the
  * LoRa radio, or with CONFIG_APP_SAT_SIM through sat_sim.c's simulated
  * air to simulated satellites that run the same crypto.
  */

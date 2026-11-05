@@ -9,7 +9,7 @@
  * status reports that id, which is how the controller knows the request
  * arrived. So the controller can repeat a command, FIRE included, until
  * it is acknowledged. Id 0 is no request (a heartbeat). See
- * design/radio_security.md, "Commands".
+ * documentation/radio_link.md, "Commands and status".
  *
  * All quantities are integers (mV, mA, mOhm) so no float formatting is needed.
  */
@@ -89,7 +89,7 @@ struct link_cmd {
  * resistances, the rail current and the link quality; the controller asks
  * for it only now and then, since every reply slot of a poll is as long
  * as the longest reply it allows. Short replies are what lets several
- * networks share the channel (design/radio_security.md, "Commands").
+ * networks share the channel (documentation/radio_link.md, "Commands and status").
  */
 #define WIRE_STATUS_SHORT_LEN  15
 #define WIRE_STATUS_LEN        44

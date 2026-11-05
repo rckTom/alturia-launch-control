@@ -4,7 +4,7 @@
  * Link security for the controller <-> satellite LoRa link.
  *
  * Pairing, per-boot sessions, the group key and frame protection, as
- * specified in design/radio_security.md. The library owns no thread, timer
+ * specified in documentation/radio_link.md. The library owns no thread, timer
  * or radio: the application hands it every received packet and calls
  * lsec_*_poll() periodically, both with the current uptime in ms. It
  * answers through the callbacks in struct lsec_io, which may be called from

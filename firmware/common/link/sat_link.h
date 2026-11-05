@@ -11,7 +11,7 @@
  * satellite's slot of the poll cycle, after listening that the channel is
  * clear. Everything else it sends (HELLO, join and pairing answers) goes
  * through CSMA/CA first, with a backoff that grows with the channel
- * utilization this satellite measures. See design/radio_security.md, "Channel access".
+ * utilization this satellite measures. See documentation/radio_link.md, "Channel access".
  *
  * Every function may be called from any thread. Events arrive on the link
  * thread; a handler may call back into sat_link_*.

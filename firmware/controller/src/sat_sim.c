@@ -2,7 +2,7 @@
  * Simulated satellites and LoRa link.
  *
  * One thread runs all satellites. Each behaves like the pad box described
- * in design/satellite.md closely enough to exercise the controller:
+ * in firmware/satellite closely enough to exercise the controller:
  * link loss, pad key switch, heartbeat timeout, continuity
  * readings, fire pulses, igniters burning open, and valve outputs that are
  * only powered while armed.

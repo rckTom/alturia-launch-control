@@ -78,7 +78,7 @@ good RSSI.
 The same image can also run either end of the real link, the code the
 controller and satellite firmware use
 ([`../common/link/`](../common/link/), spec in
-[`design/radio_security.md`](../../design/radio_security.md)). Give each
+[`documentation/radio_link.md`](../../documentation/radio_link.md)). Give each
 board a role once; it is kept in flash and the board reboots into it:
 
 ```

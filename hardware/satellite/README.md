@@ -1,9 +1,8 @@
 # Satellite board — KiCad project
 
-Schematic for the pad-side satellite board. The specification is
-[design/satellite_schematic_spec.md](../../design/satellite_schematic_spec.md).
+Schematic for the pad-side satellite board.
 
-**The schematic is hand-edited.** It was originally generated from the spec by a
+**The schematic is hand-edited.** It was originally generated from a spec by a
 script under `generator/`; that script has been removed and the sheets are now
 edited in eeschema directly. Do not reintroduce a generator over these files —
 regenerating would overwrite hand-drawn work. The spec is maintained to follow

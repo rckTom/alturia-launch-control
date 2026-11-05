@@ -72,7 +72,7 @@ west build -b native_sim/native/64 -d build-sim .
 
 The LoRa link is the shared secure link in
 [`../common/link/`](../common/link/) (spec:
-[`design/radio_security.md`](../../design/radio_security.md)). A new
+[`documentation/radio_link.md`](../../documentation/radio_link.md)). A new
 satellite pairs with the console over the air: press the user button (the
 continuity button on the real board) three times within 1 s with every
 channel SAFE, compare

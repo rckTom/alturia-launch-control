@@ -9,7 +9,7 @@
 # compile time. Rows are padded to whole bytes, so the stride is 8 * bytes.
 #
 # Needs rsvg-convert, ImageMagick and python3. VARIANT picks the logo from
-# design/logo (liftoff, rocket-a, rocket-i), WIDTH its width in pixels.
+# design/logo (only liftoff is in the repo), WIDTH its width in pixels.
 set -e
 cd "$(dirname "$0")"
 

@@ -4,7 +4,7 @@
  * Channel access timing, shared by sat_link, ctrl_link, the controller's
  * satellite simulator and the unit tests: airtime, reply slots, channel
  * utilization and the CSMA/CA policy. Pure: time comes in as an argument, in
- * microseconds. See design/radio_security.md, "Channel access".
+ * microseconds. See documentation/radio_link.md, "Channel access".
  */
 
 #ifndef LINK_SCHED_H_
@@ -179,8 +179,8 @@ enum link_csma_res link_csma_step(struct link_csma *s, bool clear, int64_t now_u
 				  int64_t *next_us);
 
 /*
- * Other networks on the channel (design/radio_security.md, "Other networks
- * on the channel"). A controller hears the frames of other controllers'
+ * Other networks on the channel (documentation/radio_link.md, "Optional:
+ * other networks on the channel"). A controller hears the frames of other controllers'
  * networks, which its own satellites may not: they are too far away, or
  * below their noise floor. From those frames it estimates when the other
  * networks will be on the air, and places its own frames, and the answers

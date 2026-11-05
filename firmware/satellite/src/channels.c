@@ -183,8 +183,8 @@ static int cont_read(int ch, int32_t *mv)
  * The ADC reads the tap, PYRO_H / 4.3. The current through R is what the
  * 1k carries, (V_TEST - diode - PYRO_H) / 1k, less the divider's share.
  * V_TEST is REFP0, so converting one tap against both REFP0 and the
- * internal reference gives V_TEST itself (design/satellite_schematic_spec.md
- * §11.1 has the reference on V_TEST). The diode drop does not scale with
+ * internal reference gives V_TEST itself (the schematic puts the reference
+ * on V_TEST). The diode drop does not scale with
  * V_TEST and is measured instead:
  *
  *   A  low side off: this channel draws through diode, 1k and divider

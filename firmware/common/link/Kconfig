@@ -2,7 +2,7 @@
 #
 # Channel access for the controller <-> satellite link: the controller's
 # poll cycle, the satellites' reply slots, listen-before-talk and the link
-# timeouts. See design/radio_security.md, "Channel access". rsource this
+# timeouts. See documentation/radio_link.md, "Channel access". rsource this
 # from an app's Kconfig.
 
 menu "Link channel access"

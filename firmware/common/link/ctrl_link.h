@@ -12,7 +12,7 @@
  * with the channel utilization, then a carrier sense (and sent anyway
  * after LINK_LBT_MAX_DEFER_MS beyond the backoff). After a poll the controller
  * stays quiet until every reply slot has passed; after any other frame it
- * leaves a gap for the satellite's answer. See design/radio_security.md,
+ * leaves a gap for the satellite's answer. See documentation/radio_link.md,
  * "Channel access".
  *
  * Every function may be called from any thread. Events arrive on the link

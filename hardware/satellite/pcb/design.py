@@ -1,4 +1,4 @@
-"""Satellite board design parameters (see design/satellite_schematic_spec.md).
+"""Satellite board design parameters.
 
 These are entered by hand and are NOT read from the schematic. When a value
 changes in eeschema it has to be changed here too.

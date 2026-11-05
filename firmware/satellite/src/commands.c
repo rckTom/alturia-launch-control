@@ -2,7 +2,7 @@
 
 /*
  * The console's commands and the status that answers them, see
- * common/wire/sat_wire.h and design/radio_security.md, "Commands".
+ * common/wire/sat_wire.h and documentation/radio_link.md, "Commands and status".
  *
  * Every poll carries a command for this satellite. A command with a
  * request id is executed once: the console repeats it until the status

@@ -2,7 +2,7 @@
 
 /*
  * The satellite's button and LEDs: the continuity display, and the
- * satellite's half of pairing (design/radio_security.md).
+ * satellite's half of pairing (documentation/radio_link.md).
  *
  * A press shows continuity on the channel LEDs for CONT_SHOW_MS: steady for
  * an output that reads OK, fast blinking for an open one, slow blinking for
