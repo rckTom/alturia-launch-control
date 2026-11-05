@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-only
 
 # USB-C goes to the ESP32-S3's USB Serial/JTAG: `west flash` uses esptool
 # on its ttyACM port and resets into the ROM bootloader by itself.

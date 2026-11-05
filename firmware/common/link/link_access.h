@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: GPL-3.0-only */
 
 /*
  * The kernel side of channel access, shared by sat_link and ctrl_link: a

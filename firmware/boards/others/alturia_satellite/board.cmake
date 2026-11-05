@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-only
 
 # SWD on J3, or the ROM bootloader's USB DFU: hold BOOT0 (SW1) through a
 # reset, then `west flash -r dfu-util`.

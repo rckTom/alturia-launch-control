@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: GPL-3.0-only */
 
 /*
  * Channel access timing, shared by sat_link, ctrl_link, the controller's

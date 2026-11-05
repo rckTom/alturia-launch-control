@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: GPL-3.0-only */
 
 /*
  * The controller's screen in the radio network simulator's web UI. A 1-bit

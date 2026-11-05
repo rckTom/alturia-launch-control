@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: GPL-3.0-only */
 
 /* The PSA calls behind lsec. Keys are imported per operation and destroyed
  * straight after, so the number of lsec keys never presses on the PSA key

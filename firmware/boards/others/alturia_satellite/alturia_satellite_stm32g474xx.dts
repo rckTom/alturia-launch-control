@@ -1,5 +1,5 @@
 /*
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: GPL-3.0-only
  *
  * Alturia Launch Control satellite, rev A (hardware/satellite). Pin
  * assignments are taken from the schematic netlist, U4 = STM32G474RET6.

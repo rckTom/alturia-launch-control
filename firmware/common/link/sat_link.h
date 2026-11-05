@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: GPL-3.0-only */
 
 /*
  * The satellite's end of the secure LoRa link: lsec on top of a transport

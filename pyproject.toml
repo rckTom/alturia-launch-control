@@ -1,8 +1,9 @@
 [project]
 name = "launch-controller"
 version = "0.1.0"
-description = "Add your description here"
+description = "Alturia Launch Control: tools for the wireless launch system"
 readme = "README.md"
+license = "GPL-3.0-only"
 authors = [
     { name = "Thomas Schmid", email = "tom@lfence.de" }
 ]

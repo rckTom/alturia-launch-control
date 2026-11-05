@@ -60,7 +60,7 @@ encrypted LoRa link.
 
 ```text
 design/          design brief, schematic spec, radio security notes, logos
-documentation/   write-ups: radio link, project overview (German), diagrams
+documentation/   write-ups: radio link, diagrams, photos
 hardware/
   controller/    pcb/ KiCad and fab outputs, cad/ FreeCAD case, D-pad, panel art,
                  renders, sim/ FEM and SPICE checks
@@ -80,8 +80,6 @@ Good places to start:
 - [documentation/radio_link.md](documentation/radio_link.md): the radio
   link as implemented, covering pairing, keys, frame format, channel access
   and commands.
-- [documentation/forum_post.md](documentation/forum_post.md): an overview
-  of the whole system, its operation and its safety concept (in German).
 - [design/satellite_schematic_spec.md](design/satellite_schematic_spec.md):
   the satellite circuit at netlist level.
 - [tools/radiosim/README.md](tools/radiosim/README.md): running the network
@@ -97,7 +95,8 @@ yet.
 
 ## Building
 
-The firmware needs a Zephyr tree set up with `west`.
+The firmware needs a Zephyr tree set up with `west`. It is developed
+against upstream Zephyr main (v4.4.0-16164-gf4656a39deb), without patches.
 
 ```sh
 # Controller UI on the desktop, with an emulated display
@@ -115,3 +114,24 @@ west flash -d build-board -r dfu-util
 For board-specific details, see
 [firmware/satellite/README.md](firmware/satellite/README.md) and
 [firmware/lora_bench/README.md](firmware/lora_bench/README.md).
+
+## Safety
+
+Alturia Launch Control fires pyrotechnic igniters. If you build or use it,
+you do so at your own risk. The licenses below come without any warranty.
+Follow the laws that apply to you and the safety rules of your range, and
+test the system without igniters before you trust it at the pad.
+
+## License
+
+- Firmware and software (`firmware/`, `tools/`, `src/`): GNU General Public
+  License v3.0 only, see [LICENSE](LICENSE).
+- Hardware (`hardware/`): CERN Open Hardware Licence v2, strongly reciprocal,
+  see [hardware/LICENSE](hardware/LICENSE).
+- Documentation (`documentation/`, `design/` except `design/logo/`):
+  [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
+- The name "Alturia" and the logos in `design/logo/` are not covered by these
+  licenses: all rights reserved, also where they appear in hardware files
+  such as the front panel artwork.
+- Third-party 3D models and drawings (`hardware/parts/` and vendor models in
+  the PCB folders) remain under the terms of their owners.

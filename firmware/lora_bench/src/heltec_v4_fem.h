@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: GPL-3.0-only */
 
 #ifndef HELTEC_V4_FEM_H_
 #define HELTEC_V4_FEM_H_

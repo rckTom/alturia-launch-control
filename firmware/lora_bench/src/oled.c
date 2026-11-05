@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: Apache-2.0 */
+/* SPDX-License-Identifier: GPL-3.0-only */
 
 /*
  * Bench status on the Heltec's 128x64 OLED, as 8 lines of 25 characters

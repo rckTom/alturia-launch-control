@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: GPL-3.0-only
 #
 # Link security (pairing, sessions, group key) and channel access timing. Include from an app's
 # CMakeLists.txt after find_package(Zephyr). Needs CONFIG_PSA_CRYPTO and the
