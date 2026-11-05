@@ -12,7 +12,7 @@ a welded relay or a failed MOSFET — can fire an igniter on its own.
 | Path | Content |
 |---|---|
 | [design/](design/) | Design documents. `satellite.md` is the original brief; `satellite_schematic_spec.md` is the netlist-level specification |
-| [documentation/](documentation/) | Write-ups for others (forum post) and their images |
+| [documentation/](documentation/) | Write-ups: the radio link as implemented (`radio_link.md`), the forum post and their images |
 | [hardware/satellite/](hardware/satellite/) | Pad-side satellite: KiCad project and fab outputs in `pcb/`, FreeCAD case and front panel in `cad/` |
 | [hardware/controller/](hardware/controller/) | Handheld controller: KiCad project and fab outputs in `pcb/`, FreeCAD case, D-pad and panel in `cad/`, FEM and SPICE checks in `sim/` |
 | [hardware/parts/](hardware/parts/) | Vendor 3D models (FreeCAD and STEP) and datasheets shared by both, also referenced as KiCad 3D models |
