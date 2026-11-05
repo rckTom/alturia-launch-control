@@ -6,11 +6,17 @@
 Inputs, all in this directory (export_glb.py writes the first two):
   *.glb            one per part, each in its own frame
   placements.json  each part's global placement in SatelliteAssembly (mm)
-  engraving.png    frontpanel_engraving.svg engrave layer, 25 px/mm
+  engraving.png    frontpanel_engraving.svg engrave layer, 25 px/mm, black on
+                   white, made by hand with Inkscape (--export-id=engrave
+                   --export-id-only --export-area-page, 5495 x 2920)
 
 SatelliteAssembly is modelled upside down, so the scene turns it over. The
 lid has latches on both long sides and no hinge: "open" means lifted off
 and set down beside the case, inside up.
+
+Cameras: hero, front, detail show the assembled satellite; exploded pulls
+the parts out of the case upward in assembly order, see EXPLODE. The lid
+stays where it was set down.
 
 Writes satellite.blend; with --render also renders the cameras to
 render_<camera>.png. Blender units are metres (glTF), 1 mm = 0.001.
@@ -34,8 +40,8 @@ P = json.loads((HERE / "placements.json").read_text())
 # (assembly z = 119.44) goes to z = 0.
 UPRIGHT = Matrix.Translation((0, 0, 119.44 * MM)) @ Matrix.Rotation(math.pi, 4, 'X')
 # Panel engraving in front_plate Body coordinates: front view is
-# (45 - x, -(y + 38.5)) mm, 220 x 117 mm, visible face at z = 0.
-PANEL_W, PANEL_H = 220.0, 117.0
+# (45 - x, -(y + 38.5)) mm, 219.8 x 116.8 mm, visible face at z = 0.
+PANEL_W, PANEL_H = 219.8, 116.8
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 scene = bpy.context.scene
@@ -52,9 +58,10 @@ def placement(name):
     return m
 
 
-def import_part(name, parent):
+def import_part(name, parent, file=None):
+    """name's placement on file.glb (default name.glb) under a new empty."""
     before = set(bpy.data.objects)
-    bpy.ops.import_scene.gltf(filepath=str(HERE / f"{name}.glb"))
+    bpy.ops.import_scene.gltf(filepath=str(HERE / f"{file or name}.glb"))
     new = [o for o in bpy.data.objects if o not in before]
     e = bpy.data.objects.new(name, None)
     scene.collection.objects.link(e)
@@ -68,9 +75,14 @@ def import_part(name, parent):
 
 
 parts = {}
-for name in ("case", "screws", "plate_Body026", "plate_satellite_1", "plate_Part",
-             "plate_KeySwitch", "plate_Delock_22032", "plate_FuseHolder"):
+for name in ("case", "screws", "screws40", "battery", "clamp1", "clamp2", "plate_Body026",
+             "plate_satellite_1", "plate_Part", "plate_KeySwitch", "plate_Delock_22032",
+             "plate_FuseHolder", "plate_FuseGrommet"):
     parts[name] = import_part(name, root)
+# the panel's LED grommets: one model, a placement each
+LEDS = sorted(k for k in P if k.startswith("led_"))
+for name in LEDS:
+    parts[name] = import_part(name, root, "led_grommet")
 
 # The lid, lifted off: turned inside up and set down left of the case
 lid_e, lid_objs = import_part("lid", None)
@@ -155,8 +167,8 @@ def engraved_panel(name, color, ref):
     tc = nodes.new("ShaderNodeTexCoord")
     tc.object = ref
     mp = nodes.new("ShaderNodeMapping")
-    # u = (155 - x) / 220, v = (97 + y) / 117 with x, y in mm
-    mp.inputs["Location"].default_value = (155 / PANEL_W, 97 / PANEL_H, 0)
+    # u = (154.9 - x) / 219.8, v = (96.9 + y) / 116.8 with x, y in mm
+    mp.inputs["Location"].default_value = (154.9 / PANEL_W, 96.9 / PANEL_H, 0)
     mp.inputs["Scale"].default_value = (-1 / (PANEL_W * MM), 1 / (PANEL_H * MM), 1)
     links.new(tc.outputs["Object"], mp.inputs["Vector"])
     img = nodes.new("ShaderNodeTexImage")
@@ -214,6 +226,8 @@ M = {
     "brass": principled("Brass", (0.85, 0.62, 0.3), 0.3, 1.0),
     "actuator": principled("Actuator", (0.02, 0.08, 0.55), 0.3, 0.7),
     "fuse": principled("FuseHolder", (0.015, 0.015, 0.016), 0.45),
+    "battery": principled("BatteryABS", (0.035, 0.036, 0.04), 0.4),
+    "clamp": printed("BatteryClamp", (0.02, 0.021, 0.023), root, 0.5),
 }
 
 
@@ -234,10 +248,18 @@ for o in bpy.data.objects:
         assign(o, M["case"])
     elif o in parts["plate_Body026"][1]:
         assign(o, M["panel"])
-    elif o in parts["screws"][1]:
+    elif o in parts["screws"][1] or o in parts["screws40"][1]:
         assign(o, M["screw"])
+    elif any(o in parts[k][1] for k in LEDS):
+        assign(o, M["rubber"])
     elif o in parts["plate_FuseHolder"][1]:
         assign(o, M["fuse"])
+    elif o in parts["plate_FuseGrommet"][1]:
+        assign(o, M["rubber"])
+    elif o in parts["battery"][1]:
+        assign(o, M["battery"])
+    elif o in parts["clamp1"][1] or o in parts["clamp2"][1]:
+        assign(o, M["clamp"])
     elif o in parts["plate_Delock_22032"][1]:
         if n.startswith(("Housing", "Nut")):
             assign(o, M["steel"])
@@ -265,6 +287,92 @@ for o in bpy.data.objects:
     if o.data.polygons:
         o.data.shade_smooth()
 
+# ---- exploded view ---------------------------------------------------------
+
+
+def world_bounds(objs):
+    vs = [m.matrix_world @ Vector(c) for o in objs
+          for m in [o] + list(o.children_recursive) if m.type == 'MESH'
+          for c in m.bound_box]
+    return (Vector([min(v[i] for v in vs) for i in range(3)]),
+            Vector([max(v[i] for v in vs) for i in range(3)]))
+
+
+def outward(name, of, dist):
+    """Sideways shift (mm) moving part name away from part of, along x or y."""
+    d = sum(world_bounds([parts[name][0]]), Vector()) - sum(world_bounds([parts[of][0]]), Vector())
+    return (math.copysign(dist, d.x), 0, 0) if abs(d.x) > abs(d.y) else (0, math.copysign(dist, d.y), 0)
+
+
+bpy.context.view_layer.update()
+# Bottom to top, the order the satellite goes together. Each group rises
+# just far enough to clear, by EXPLODE_GAP, every group before it that it
+# overlaps in plan view; "with" keeps a group at another's height and
+# "shift" moves it sideways (mm).
+EXPLODE_GAP = 30
+EXPLODE = [
+    ("case", ["case"], {}),
+    ("battery", ["battery"], {}),
+    # the clamps hold the battery's edges: out sideways, at its height
+    ("clamp1", ["clamp1"], {"with": "battery", "shift": outward("clamp1", "battery", 45)}),
+    ("clamp2", ["clamp2"], {"with": "battery", "shift": outward("clamp2", "battery", 45)}),
+    ("pcb", ["plate_satellite_1"], {}),
+    ("plate", ["plate_Body026"], {}),
+    # fuse and LED grommets go in from the front
+    ("grommet", ["plate_FuseGrommet"] + LEDS, {}),
+    ("panel parts", ["plate_Part", "plate_KeySwitch", "plate_Delock_22032",
+                     "plate_FuseHolder"], {}),
+    ("screws", ["screws"], {}),
+    # M3x40 latch pivots through the case lugs (the latches are drawn on the
+    # set-aside lid): pulled out along their axis, heads at +x
+    ("latch pins", ["screws40"], {"with": "case", "shift": (40, 0, 0)}),
+]
+EXPLODE = [(n, [parts[k][0] for k in keys], opt) for n, keys, opt in EXPLODE]
+
+
+def explode_offsets():
+    """Offsets per group, and the exploded bounds of each group's meshes.
+
+    Overlap is tested mesh by mesh: a group's overall box (a long key
+    switch, a row of screws) would push the next group needlessly high."""
+    off, boxes = {}, {}
+    for name, objs, opt in EXPLODE:
+        s = Vector(opt.get("shift", (0, 0, 0))) * MM
+        mine = [(lo + s, hi + s) for o in objs
+                for m in [o] + list(o.children_recursive) if m.type == 'MESH'
+                for lo, hi in [world_bounds([m])]]
+        if "with" in opt:
+            dz = off[opt["with"]].z
+        else:
+            gap = opt.get("gap", EXPLODE_GAP) * MM
+            dz = 0.0
+            for theirs in boxes.values():
+                for lo, hi in mine:
+                    for olo, ohi in theirs:
+                        if lo.x < ohi.x and olo.x < hi.x and lo.y < ohi.y and olo.y < hi.y:
+                            dz = max(dz, ohi.z + gap - lo.z)
+        up = Vector((0, 0, dz))
+        off[name] = s + up
+        boxes[name] = [(lo + up, hi + up) for lo, hi in mine]
+    box = {n: (Vector([min(b[0][i] for b in bs) for i in range(3)]),
+               Vector([max(b[1][i] for b in bs) for i in range(3)])) for n, bs in boxes.items()}
+    return off, box
+
+
+ASSEMBLED = {o: o.matrix_world.copy() for _, objs, _ in EXPLODE for o in objs}
+OFFSETS, EXPLODED_BOX = explode_offsets()
+
+
+def set_exploded(on):
+    # the backdrop wall turns to stand behind the exploded camera's view
+    sweep.rotation_euler.z = EX_SWEEP_Z if on else SWEEP_Z
+    for name, objs, _ in EXPLODE:
+        for o in objs:
+            t = Matrix.Translation(OFFSETS[name] if on else Vector())
+            o.matrix_world = t @ ASSEMBLED[o]
+    bpy.context.view_layer.update()
+
+
 # ---- studio -----------------------------------------------------------------
 
 # between the case and the lid beside it
@@ -285,7 +393,8 @@ for a, b2 in zip(rows, rows[1:]):
 bm.to_mesh(sweep.data)
 bm.free()
 sweep.data.shade_smooth()
-sweep.rotation_euler.z = math.radians(20)
+SWEEP_Z = math.radians(20)
+sweep.rotation_euler.z = SWEEP_Z
 sweep.location.xy = CENTER.xy
 assign(sweep, principled("Backdrop", (0.62, 0.62, 0.61), 0.6))
 
@@ -352,6 +461,34 @@ CAMS = {
                       focus=panel_c + Vector((-0.071, 0.034, 0.01)), fstop=5.6), (2400, 1600)),
 }
 
+
+
+def fitted_camera(name, direction, boxes, lens, res, margin=1.1):
+    """Camera looking along -direction, pulled back until boxes fill the frame."""
+    scene.render.resolution_x, scene.render.resolution_y = res
+    corners = [Vector((x, y, z)) for lo, hi in boxes for x in (lo.x, hi.x)
+               for y in (lo.y, hi.y) for z in (lo.z, hi.z)]
+    lo = Vector([min(v[i] for v in corners) for i in range(3)])
+    hi = Vector([max(v[i] for v in corners) for i in range(3)])
+    co = camera(name, direction, 1.0, lens, target=(lo + hi) / 2, up='Y')
+    bpy.context.view_layer.update()
+    loc, _ = co.camera_fit_coords(bpy.context.evaluated_depsgraph_get(),
+                                  [c for v in corners for c in v])
+    c = (lo + hi) / 2
+    co.location = c + (loc - c) * margin
+    return co
+
+
+# the stack and the lid lying beside it, from the front left
+lid_lo, lid_hi = bounds(lid_meshes)
+ex_boxes = list(EXPLODED_BOX.values()) + [(lid_lo, lid_hi)]
+EX_DIR = Vector((-0.5, 0.82, 0.55))
+EX_RES = (2000, 2400)
+CAMS["exploded"] = (fitted_camera("exploded", EX_DIR, ex_boxes, 70, EX_RES), EX_RES)
+EXPLODED_CAMS = {"exploded"}
+# local -y is the wall: put it opposite the camera
+EX_SWEEP_Z = math.atan2(EX_DIR.y, EX_DIR.x) - math.pi / 2
+
 scene.render.engine = 'CYCLES'
 scene.cycles.device = 'CPU'
 # leave one core free for FreeCAD; saved in the .blend too
@@ -377,6 +514,7 @@ if "--render" in argv:
             scene.cycles.samples = int(k.split("=")[1])
     for n in names:
         cam, (rx, ry) = CAMS[n]
+        set_exploded(n in EXPLODED_CAMS)
         scene.camera = cam
         scene.render.resolution_x, scene.render.resolution_y = rx, ry
         scene.render.filepath = str(HERE / f"render_{n}.png")

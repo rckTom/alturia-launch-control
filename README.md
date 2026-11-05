@@ -17,6 +17,10 @@ encrypted LoRa link.
   <img src="hardware/controller/cad/render/render_hero.png" alt="Handheld controller" width="49%">
   <img src="hardware/satellite/cad/render/render_front.png" alt="Pad-side satellite" width="49%">
 </p>
+<p align="center">
+  <img src="hardware/controller/cad/render/render_exploded.png" alt="Controller, exploded view" width="49%">
+  <img src="hardware/satellite/cad/render/render_exploded.png" alt="Satellite, exploded view" width="49%">
+</p>
 
 ## Highlights
 

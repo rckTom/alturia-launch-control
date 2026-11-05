@@ -6,6 +6,9 @@
 --eevee renders with EEVEE on the GPU instead of Cycles on the CPU: much
 faster; the acrylic window is shaded as thin glass without refraction.
 
+Cameras: hero, front, detail, top show the assembled controller; exploded
+pulls the parts apart along z (front up) in assembly order, see EXPLODE.
+
 Inputs, all in this directory:
   assembly.glb   ControllerAssembly.FCStd (export_glb.py); sometimes without
                  the PCB link, depending on what FreeCAD had loaded
@@ -125,7 +128,10 @@ def z_range(o):
 FRONT_AT.z = z_range(bpy.data.objects["Body"])[1]
 SCREEN_C.z = z_range(next(o for o in bpy.data.objects if o.type == 'MESH'
                           and o.name.startswith("Open CASCADE STEP translator")))[1] + 0.1 * MM
-CASE_BOTTOM = z_range(bpy.data.objects["Body003"])[0]
+# glTF node names are FreeCAD labels: BackCase's link is BackShell (was Body003)
+BACK = next(o for o in bpy.data.objects if o.type == 'MESH'
+            and re.match(r"(BackShell|Body003)(\.\d+)?$", o.name))
+CASE_BOTTOM = z_range(BACK)[0]
 
 # ---- materials --------------------------------------------------------------
 
@@ -284,12 +290,16 @@ for o in list(bpy.data.objects):
     n = o.name
     if n == "Body":
         assign(o, M["front"])
-    elif n == "Body003":
+    elif o is BACK:
         assign(o, M["back"])
+    elif re.match(r"M\d+x\d+-Screw", n):     # Fasteners workbench screws
+        assign(o, M["screw"])
     elif n == "Body002":
         assign(o, M["acrylic"])
-    elif n in ("Body004", "Body005"):   # keypad membrane and retainer
-        assign(o, M["rubber"])
+    elif n in ("Membrane", "MembraneRetainer", "Body004", "Body005"):
+        assign(o, M["rubber"])      # keypad membrane and retainer
+    elif n.startswith("Insert_M2"):     # heat-set inserts
+        assign(o, M["brass"])
     elif n == "Body001":
         assign(o, M["gold"])
     elif n.startswith(("Housing", "Nut")):
@@ -301,7 +311,7 @@ for o in list(bpy.data.objects):
         c = o.matrix_world @ (sum((Vector(b) for b in o.bound_box), Vector()) / 8)
         upper = c.y > -46.5 * MM
         assign(o, M["fill"] if upper else M["arm"] if c.x < -6 * MM else M["fire"])
-    elif n.startswith(("Gasket", "Insulator")):
+    elif n.startswith(("Gasket", "Insulator", "Grommet")):
         assign(o, M["rubber"])
     elif n.startswith("Terminals"):
         assign(o, M["brass"])
@@ -328,6 +338,118 @@ scr.location = SCREEN_C
 scr.parent = root
 assign(scr, screen_mat())
 
+# ---- exploded view ---------------------------------------------------------
+
+bpy.context.view_layer.update()     # the screen's matrix_world is stale till then
+asm_node = bpy.data.objects["Assembly"]
+pcb_top = pcb_link if pcb_link is not None else pcb_root
+
+
+def nodes(*names):
+    """Assembly children by FreeCAD name (Blender may append .001)."""
+    pat = re.compile(r"(%s)(\.\d+)?$" % "|".join(names))
+    return [o for o in asm_node.children if pat.match(o.name)]
+
+
+buttons = nodes(r"Delock_\d+")
+WINDOW = nodes("Body002")
+# Clear acrylic all but vanishes on its own against the backdrop: exploded,
+# the window gets a pale blue tint and a little haze so it reads as a part
+M["acrylic_exploded"] = principled("AcrylicExploded", (0.72, 0.86, 0.95), 0.08, **{
+    "Transmission Weight": 0.8, "IOR": 1.49, "Coat Weight": 0.5})
+# Bottom to top, the order the controller goes together face down. Each
+# group rises just far enough to clear, by EXPLODE_GAP, every group before
+# it that it overlaps in plan view; "with" keeps a group at another's
+# height, "under" hangs it "gap" mm below another, "shift" moves it sideways
+# (mm) and "gap" widens its own gap. Empties
+# that belong to a part (engraving projector, screen) ride along.
+EXPLODE_GAP = 14
+EXPLODE = [
+    # M2x12 from the back through the back case into the front case
+    ("case screws", nodes(r"M2x12-Screw\d*"), {}),
+    ("back", [BACK], {}),
+    # M2x8 from under the PCB through PCB and retainer into the inserts in
+    # the front case: they clamp the board too
+    ("retainer screws", nodes(r"M2x8-Screw\d*"), {}),
+    # with the SMA pigtail; wider, so the screws under it stay in view
+    ("pcb", [pcb_top, scr] + nodes("Body001"), {"gap": 22}),
+    ("grommet", nodes("PowerGrommet"), {"with": "pcb", "shift": (0, 22, 0)}),
+    ("retainer", nodes("MembraneRetainer", "Body005"), {}),
+    ("membrane", nodes("Membrane", "Body004"), {}),
+    ("keycaps", nodes(r"Keycap\d*"), {}),
+    ("nuts", [c for b in buttons for c in b.children if c.name.startswith("Nut")], {}),
+    # the acrylic window goes into the front case from the back, over the
+    # display
+    ("window", WINDOW, {}),
+    # wider, so the keycaps under it stay in view
+    ("front", nodes("Body") + [engrave_ref], {"gap": 24}),
+    # heat-set inserts, just under their bosses in the front case
+    ("inserts", nodes(r"Insert_M2 v\d*"), {"under": "front", "gap": 5}),
+    ("buttons", buttons, {}),
+]
+
+
+def world_bounds(objs):
+    vs = [m.matrix_world @ Vector(c) for o in objs
+          for m in [o] + list(o.children_recursive) if m.type == 'MESH'
+          for c in m.bound_box]
+    return (Vector([min(v[i] for v in vs) for i in range(3)]),
+            Vector([max(v[i] for v in vs) for i in range(3)]))
+
+
+def explode_offsets():
+    """Offsets per group, and the exploded bounds of each group's meshes.
+
+    Overlap is tested mesh by mesh: a group's overall box (a long key
+    switch, a row of screws) would push the next group needlessly high."""
+    off, boxes = {}, {}
+    for name, objs, opt in EXPLODE:
+        s = Vector(opt.get("shift", (0, 0, 0))) * MM
+        mine = [(lo + s, hi + s) for o in objs
+                for m in [o] + list(o.children_recursive) if m.type == 'MESH'
+                for lo, hi in [world_bounds([m])]]
+        if "with" in opt:
+            dz = off[opt["with"]].z
+        elif "under" in opt:
+            # tops this far below the lowest point of that group
+            bottom = min(lo.z for lo, _ in boxes[opt["under"]])
+            dz = bottom - opt.get("gap", EXPLODE_GAP) * MM - max(hi.z for _, hi in mine)
+        else:
+            gap = opt.get("gap", EXPLODE_GAP) * MM
+            dz = 0.0
+            for theirs in boxes.values():
+                for lo, hi in mine:
+                    for olo, ohi in theirs:
+                        if lo.x < ohi.x and olo.x < hi.x and lo.y < ohi.y and olo.y < hi.y:
+                            dz = max(dz, ohi.z + gap - lo.z)
+        up = Vector((0, 0, dz))
+        off[name] = s + up
+        boxes[name] = [(lo + up, hi + up) for lo, hi in mine]
+    box = {n: (Vector([min(b[0][i] for b in bs) for i in range(3)]),
+               Vector([max(b[1][i] for b in bs) for i in range(3)])) for n, bs in boxes.items()}
+    return off, box
+
+
+ASSEMBLED = {o: o.matrix_world.copy() for _, objs, _ in EXPLODE for o in objs}
+OFFSETS, EXPLODED_BOX = explode_offsets()
+
+
+def set_exploded(on):
+    # the backdrop wall turns to stand behind the exploded camera's view
+    sweep.rotation_euler.z = EX_SWEEP_Z if on else SWEEP_Z
+    for w in WINDOW:
+        for m in [w] + list(w.children_recursive):
+            if m.type == 'MESH':
+                m.data.materials[0] = M["acrylic_exploded" if on else "acrylic"]
+    # twice: the nuts are children of the buttons, which move too
+    for _ in range(2):
+        for name, objs, _ in EXPLODE:
+            for o in objs:
+                t = Matrix.Translation(OFFSETS[name] if on else Vector())
+                o.matrix_world = t @ ASSEMBLED[o]
+        bpy.context.view_layer.update()
+
+
 # ---- studio -----------------------------------------------------------------
 
 # seamless sweep: floor under the case, curving up behind the top end
@@ -346,7 +468,8 @@ for a, b2 in zip(rows, rows[1:]):
 bm.to_mesh(sweep.data)
 bm.free()
 sweep.data.shade_smooth()
-sweep.rotation_euler.z = math.radians(-28)
+SWEEP_Z = math.radians(-28)
+sweep.rotation_euler.z = SWEEP_Z
 bd = principled("Backdrop", (0.62, 0.62, 0.61), 0.6)
 assign(sweep, bd)
 
@@ -414,6 +537,34 @@ CAMS = {
                    target=Vector((-6 * MM, 50 * MM, MID_Z)), fstop=8), (2400, 1600)),
 }
 
+
+
+def fitted_camera(name, direction, boxes, lens, res, margin=1.1):
+    """Camera looking along -direction, pulled back until boxes fill the frame."""
+    scene.render.resolution_x, scene.render.resolution_y = res
+    corners = [Vector((x, y, z)) for lo, hi in boxes for x in (lo.x, hi.x)
+               for y in (lo.y, hi.y) for z in (lo.z, hi.z)]
+    lo = Vector([min(v[i] for v in corners) for i in range(3)])
+    hi = Vector([max(v[i] for v in corners) for i in range(3)])
+    co = camera(name, direction, 1.0, lens, target=(lo + hi) / 2)
+    bpy.context.view_layer.update()
+    loc, _ = co.camera_fit_coords(bpy.context.evaluated_depsgraph_get(),
+                                  [c for v in corners for c in v])
+    c = (lo + hi) / 2
+    co.location = c + (loc - c) * margin
+    return co
+
+
+# from the right-hand side, a little from the bottom end: the long axis runs
+# across the frame and the low angle looks into the gaps
+EX_DIR = Vector((0.86, -0.36, 0.36))
+EX_RES = (2400, 2000)
+CAMS["exploded"] = (fitted_camera("exploded", EX_DIR, list(EXPLODED_BOX.values()), 85,
+                                   EX_RES), EX_RES)
+# local +y is the wall: put it opposite the camera
+EX_SWEEP_Z = math.atan2(EX_DIR.y, EX_DIR.x) + math.pi / 2
+EXPLODED_CAMS = {"exploded"}
+
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 EEVEE = "--eevee" in argv
 
@@ -478,6 +629,7 @@ if "--render" in argv:
             scene.eevee.taa_render_samples = int(k.split("=")[1])
     for n in names:
         cam, (rx, ry) = CAMS[n]
+        set_exploded(n in EXPLODED_CAMS)
         scene.camera = cam
         scene.render.resolution_x, scene.render.resolution_y = rx, ry
         scene.render.filepath = str(HERE / f"render_{n}.png")
