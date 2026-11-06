@@ -60,7 +60,7 @@
 
 		/* Delock 22032 pushbuttons on J3 / J2 */
 		arm_button {
-			gpios = <&gpio0 6 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;	/* KEY_ARM */
+			gpios = <&gpio0 8 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;	/* KEY_ARM */
 			zephyr,code = <INPUT_KEY_A>;
 		};
 
@@ -75,7 +75,7 @@
 		};
 
 		vent_button {
-			gpios = <&gpio0 8 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;	/* KEY_VENT */
+			gpios = <&gpio0 6 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;	/* KEY_VENT */
 			zephyr,code = <INPUT_KEY_V>;
 		};
 
