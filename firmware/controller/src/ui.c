@@ -53,7 +53,7 @@ void ui_init(void)
 	lv_obj_t *scr = lv_screen_active();
 
 	lv_obj_set_style_bg_color(scr, lv_color_white(), 0);
-	lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
+	lv_obj_set_scrollable(scr, false);
 
 	ui_styles_init();
 	ui_list_create(scr);

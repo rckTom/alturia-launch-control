@@ -16,6 +16,7 @@ target_sources(app PRIVATE
 	src/controller.c
 	src/pads.c
 	src/ui.c
+	src/lvgl/i1_blend_fix.c
 	src/ui/widgets.c
 	src/ui/list.c
 	src/ui/armed.c

@@ -359,10 +359,15 @@ zephyr_udc0: &usb {
 	status = "okay";
 };
 
-/* Internal channels only (die temperature, VREFINT); no pin is wired to it. */
-&adc1 {
+/* Clock settings are shared by ADC1/2 and live on the common node. */
+&adc12_common {
 	st,adc-clock-source = "SYNC";
 	st,adc-prescaler = <4>;
+	status = "okay";
+};
+
+/* Internal channels only (die temperature, VREFINT); no pin is wired to it. */
+&adc1 {
 	status = "okay";
 };
 

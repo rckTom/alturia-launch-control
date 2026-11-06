@@ -80,7 +80,7 @@ lv_obj_t *ui_box(lv_obj_t *parent, int32_t x, int32_t y, int32_t w, int32_t h)
 	lv_obj_remove_style_all(box);
 	lv_obj_add_style(box, &style_box, 0);
 	lv_obj_add_style(box, &ui_style_inverted, LV_STATE_CHECKED);
-	lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+	lv_obj_set_scrollable(box, false);
 	lv_obj_set_pos(box, x, y);
 	lv_obj_set_size(box, w, h);
 	return box;
@@ -214,7 +214,7 @@ void ui_set_text_fmt(lv_obj_t *label, const char *fmt, ...)
 /* LVGL itself ignores flags and states that are already set */
 void ui_set_visible(lv_obj_t *obj, bool visible)
 {
-	lv_obj_set_flag(obj, LV_OBJ_FLAG_HIDDEN, !visible);
+	lv_obj_set_hidden(obj, !visible);
 }
 
 void ui_set_inverted(lv_obj_t *obj, bool inverted)
