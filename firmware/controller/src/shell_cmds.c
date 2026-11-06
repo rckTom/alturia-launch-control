@@ -71,32 +71,38 @@ static int cmd_ctrl_select(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+/* D-pad steps: one request, and the presses for screens that count them */
+static int dpad(size_t argc, char **argv, enum button b, enum ctrl_req_type req, int dir)
+{
+	int n = argc > 1 ? atoi(argv[1]) : 1;
+
+	inputs_tap(b, n);
+	ctrl_post(req, dir * n);
+	return 0;
+}
+
 static int cmd_ctrl_up(const struct shell *sh, size_t argc, char **argv)
 {
 	ARG_UNUSED(sh);
-	ctrl_post(CTRL_REQ_CURSOR, argc > 1 ? -atoi(argv[1]) : -1);
-	return 0;
+	return dpad(argc, argv, BTN_UP, CTRL_REQ_CURSOR, -1);
 }
 
 static int cmd_ctrl_down(const struct shell *sh, size_t argc, char **argv)
 {
 	ARG_UNUSED(sh);
-	ctrl_post(CTRL_REQ_CURSOR, argc > 1 ? atoi(argv[1]) : 1);
-	return 0;
+	return dpad(argc, argv, BTN_DOWN, CTRL_REQ_CURSOR, 1);
 }
 
 static int cmd_ctrl_left(const struct shell *sh, size_t argc, char **argv)
 {
 	ARG_UNUSED(sh);
-	ctrl_post(CTRL_REQ_ADJUST, argc > 1 ? -atoi(argv[1]) : -1);
-	return 0;
+	return dpad(argc, argv, BTN_LEFT, CTRL_REQ_ADJUST, -1);
 }
 
 static int cmd_ctrl_right(const struct shell *sh, size_t argc, char **argv)
 {
 	ARG_UNUSED(sh);
-	ctrl_post(CTRL_REQ_ADJUST, argc > 1 ? atoi(argv[1]) : 1);
-	return 0;
+	return dpad(argc, argv, BTN_RIGHT, CTRL_REQ_ADJUST, 1);
 }
 
 static int cmd_ctrl_battery(const struct shell *sh, size_t argc, char **argv)
@@ -148,7 +154,6 @@ static int cmd_ctrl_battery(const struct shell *sh, size_t argc, char **argv)
 		return 0;                                                           \
 	}
 
-DEFINE_CTRL_BUTTON(ok, CTRL_REQ_SELECT)
 DEFINE_CTRL_BUTTON(hold, CTRL_REQ_EDIT)
 DEFINE_CTRL_BUTTON(arm, CTRL_REQ_ARM)
 DEFINE_CTRL_BUTTON(back, CTRL_REQ_BACK)
@@ -156,6 +161,16 @@ DEFINE_CTRL_BUTTON(back_hold, CTRL_REQ_BACK_LONG)
 DEFINE_CTRL_BUTTON(fill, CTRL_REQ_FILL)
 DEFINE_CTRL_BUTTON(vent, CTRL_REQ_VENT)
 DEFINE_CTRL_BUTTON(power, CTRL_REQ_POWER)
+
+static int cmd_ctrl_ok(const struct shell *sh, size_t argc, char **argv)
+{
+	ARG_UNUSED(sh);
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+	inputs_tap(BTN_OK, 1);
+	ctrl_post(CTRL_REQ_SELECT, 0);
+	return 0;
+}
 
 /*
  * Keyboard mode: raw terminal input drives the controls directly, like the
@@ -211,6 +226,7 @@ static void kbd_key(const struct shell *sh, uint8_t c)
 		break;
 	case '\r':
 	case '\n':
+		inputs_tap(BTN_OK, 1);
 		ctrl_post(CTRL_REQ_SELECT, 0);
 		break;
 	default:
@@ -237,8 +253,10 @@ static void kbd_bypass(const struct shell *sh, uint8_t *data, size_t len, void *
 			}
 			kbd_state = KBD_NORMAL;
 			if (c == 'A' || c == 'B') {
+				inputs_tap(c == 'A' ? BTN_UP : BTN_DOWN, 1);
 				ctrl_post(CTRL_REQ_CURSOR, c == 'A' ? -1 : 1);
 			} else if (c == 'C' || c == 'D') {
+				inputs_tap(c == 'D' ? BTN_LEFT : BTN_RIGHT, 1);
 				ctrl_post(CTRL_REQ_ADJUST, c == 'D' ? -1 : 1);
 			}
 			continue;

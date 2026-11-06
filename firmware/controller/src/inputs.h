@@ -53,4 +53,11 @@ void inputs_diag(struct inputs_diag *out);
 
 bool inputs_pressed(enum button b);
 
+/*
+ * Count n presses and releases of a button that never touched it: the
+ * shell's stand-in for the D-pad, so that screens reading the counters
+ * (the game, the button test) see the shell too. Acts on nothing else.
+ */
+void inputs_tap(enum button b, int n);
+
 #endif /* INPUTS_H_ */

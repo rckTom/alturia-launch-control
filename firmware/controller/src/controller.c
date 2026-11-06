@@ -1303,7 +1303,10 @@ static void handle_request(const struct ctrl_req *req)
 		}
 		return;
 	}
-	/* The button test takes every button, so only holding BACK leaves it */
+	/*
+	 * The button test takes every button, so only holding BACK leaves it.
+	 * The game reads the D-pad itself; every other request is dropped.
+	 */
 	if (v.diag != DIAG_NONE) {
 		if (req->type == (v.diag == DIAG_BUTTONS ? CTRL_REQ_BACK_LONG : CTRL_REQ_BACK)) {
 			v.diag = DIAG_NONE;

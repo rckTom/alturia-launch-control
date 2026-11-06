@@ -13,6 +13,7 @@
  *   pads.c     channel list and pad setup
  *   sats.c     satellites and pairing
  *   diag.c     button test and battery report
+ *   game.c     Stacker, the game on the diagnostics menu
  *   dialogs.c  fault, power off and the splash
  *
  * widgets.c holds the shared styles and the pieces the views are made of.
@@ -63,6 +64,7 @@ void ui_init(void)
 	ui_pads_create(scr);
 	ui_sats_create(scr);
 	ui_diag_create(scr);
+	ui_game_create(scr);
 	ui_dialogs_create(scr);
 
 	splash_until = k_uptime_get() + SPLASH_MS;
@@ -99,6 +101,9 @@ static lv_obj_t *current_view(const struct ctrl_view *v, int64_t now)
 	}
 	if (v->sats.active) {
 		return ui_sats_refresh(v, now);
+	}
+	if (v->diag == DIAG_GAME) {
+		return ui_game_refresh(now);
 	}
 	if (v->diag != DIAG_NONE) {
 		return ui_diag_refresh(v);

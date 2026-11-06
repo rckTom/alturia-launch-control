@@ -24,8 +24,9 @@
  *  - Satellites: pairing and forgetting.
  *  - Messages: the last events, newest first.
  *  - Diagnostics, a menu of its own: the button test, which shows every
- *    button press instead of acting on it (holding BACK leaves), and the
- *    battery.
+ *    button press instead of acting on it (holding BACK leaves), the
+ *    battery, and Stacker, a falling-block game (game.h) that takes the
+ *    D-pad for itself until BACK pauses it.
  *  - Power off.
  * While any of these is open, the D-pad acts on it, BACK backs out one
  * level, and ARM, FILL and VENT are refused. The power button asks to
@@ -136,6 +137,7 @@ enum settings_entry {
 enum diag_entry {
 	DIAG_BUTTONS,
 	DIAG_BATTERY,
+	DIAG_GAME,
 	DIAG_COUNT,
 	DIAG_NONE = -1,
 };

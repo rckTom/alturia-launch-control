@@ -132,6 +132,14 @@ bool inputs_pressed(enum button b)
 	return pressed;
 }
 
+void inputs_tap(enum button b, int n)
+{
+	for (int i = 0; i < n && b < BTN_COUNT; i++) {
+		record(b, true);
+		record(b, false);
+	}
+}
+
 static void on_ok(bool pressed)
 {
 	if (pressed) {

@@ -4,6 +4,7 @@
  *    count, and the last few presses and releases. Every button is shown
  *    instead of acting, so only holding BACK leaves.
  *  - Battery: everything the fuel gauge and the charger report.
+ * The game on the same menu has a view of its own, game.c.
  */
 
 #include <stdio.h>

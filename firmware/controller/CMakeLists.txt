@@ -15,6 +15,7 @@ target_sources(app PRIVATE
 	src/main.c
 	src/controller.c
 	src/pads.c
+	src/game.c
 	src/ui.c
 	src/lvgl/i1_blend_fix.c
 	src/ui/widgets.c
@@ -25,6 +26,7 @@ target_sources(app PRIVATE
 	src/ui/pads.c
 	src/ui/sats.c
 	src/ui/diag.c
+	src/ui/game.c
 	src/ui/dialogs.c
 	src/inputs.c
 	src/power.c
