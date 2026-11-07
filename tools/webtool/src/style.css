@@ -1,0 +1,109 @@
+/* SPDX-License-Identifier: GPL-3.0-only
+ *
+ * The look follows the controller's front panel: a charcoal plate with
+ * warm white print in heavy, widely tracked Noto Sans, round grey caps,
+ * LED dots with their labels, and the Sharp memory LCD as the one light
+ * surface. Monochrome on purpose, like the white-only panel transfer.
+ */
+
+@font-face { font-family: 'Noto Sans'; font-weight: 400; src: url('/fonts/NotoSans-Regular.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Noto Sans'; font-weight: 500; src: url('/fonts/NotoSans-Medium.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Noto Sans'; font-weight: 700; src: url('/fonts/NotoSans-Bold.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Noto Sans'; font-weight: 800; src: url('/fonts/NotoSans-ExtraBold.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Noto Sans'; font-weight: 900; src: url('/fonts/NotoSans-Black.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Noto Sans Condensed'; font-weight: 700; src: url('/fonts/NotoSans-CondensedBold.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Noto Sans Mono'; font-weight: 400; src: url('/fonts/NotoSansMono-Regular.woff2') format('woff2'); font-display: block; }
+@font-face { font-family: 'Noto Sans Mono'; font-weight: 700; src: url('/fonts/NotoSansMono-Bold.woff2') format('woff2'); font-display: block; }
+
+:root {
+  --room: #141517;          /* behind the plate */
+  --plate: #202124;         /* the panel */
+  --plate-edge: #2b2c30;
+  --ink: #f3f2ee;           /* the white print */
+  --ink-2: rgb(243 242 238 / 0.62);
+  --ink-3: rgb(243 242 238 / 0.32);
+  --cap: #8e8f93;           /* button caps */
+  --cap-hi: #a3a4a8;
+  --cap-lo: #6f7074;
+  --lcd: #d8d9d3;           /* memory LCD, reflective */
+  --lcd-ink: #1c1d1f;
+  --sans: 'Noto Sans', system-ui, sans-serif;
+  --mono: 'Noto Sans Mono', ui-monospace, monospace;
+  --track: 0.14em;          /* label tracking, as on the engraving */
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--room);
+  color: var(--ink);
+  font: 400 15px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 28px 20px 18px;
+}
+
+/* ---- engraved type ---- */
+
+.label {
+  font-weight: 800;
+  font-size: 12.5px;
+  letter-spacing: var(--track);
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.label.dim { color: var(--ink-2); }
+
+.value {
+  font-family: var(--mono);
+  font-size: 13.5px;
+  color: var(--ink);
+}
+
+.ruled {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.ruled::before,
+.ruled::after {
+  content: '';
+  height: 2px;
+  flex: 1;
+  background: var(--ink);
+}
+
+/* ---- text buttons: engraved words with an underline rule ---- */
+
+.textbtn {
+  font: 800 12px var(--sans);
+  letter-spacing: var(--track);
+  text-transform: uppercase;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  padding: 2px 0 3px;
+  border-bottom: 2px solid var(--ink-3);
+  cursor: pointer;
+}
+
+.textbtn:hover:not(:disabled) { border-bottom-color: var(--ink); }
+.textbtn:disabled { color: var(--ink-3); cursor: default; border-bottom-color: transparent; }
+.textbtn:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+
+/* ---- xterm inside the LCD ---- */
+
+.xterm .xterm-viewport { background: transparent !important; }
+.xterm .xterm-viewport::-webkit-scrollbar { width: 8px; }
+.xterm .xterm-viewport::-webkit-scrollbar-thumb { background: rgb(28 29 31 / 0.35); }
+.xterm .xterm-viewport::-webkit-scrollbar-track { background: transparent; }

@@ -31,14 +31,26 @@ panel, which is PyroStage(7 − n):
 
 ```sh
 source ~/zephyrproject/venv/bin/activate
-west build -b alturia_satellite -d build-board -p always .
+west build --sysbuild -b alturia_satellite -d build-board -p always . -- -DBOARD_ROOT=$PWD/..
 west flash -d build-board                # ST-LINK on J3
 west flash -d build-board -r dfu-util    # or USB DFU: hold BOOT0 (SW1) through a reset
 ```
 
-The app-side settings for the board (LoRa, GPIO and ADC shells) are in
-[`boards/alturia_satellite.conf`](boards/alturia_satellite.conf). For
-bring-up, `gpio info`, `gpio get gpioc 15`, `gpio set gpiob 3 1` and
+Sysbuild puts MCUboot in front of the app (the board's `Kconfig.sysbuild`)
+and gives the app mcumgr on its USB shell, so later updates can go through
+the [browser tool](../../tools/webtool/README.md). The flash is laid out as
+40 KB MCUboot, two 232 KB image slots and the 8 KB settings partition.
+MCUboot logs on the UART header J2. Images are signed with MCUboot's
+development key unless `-DSB_CONFIG_BOOT_SIGNATURE_KEY_FILE=\"key.pem\"`
+says otherwise. A board only takes images signed with the key its MCUboot
+was built with.
+
+The app-side settings for the board (LoRa) are in
+[`boards/alturia_satellite.conf`](boards/alturia_satellite.conf). The GPIO,
+ADC and PWM shells for bring-up are in [`bringup.conf`](bringup.conf);
+they cost some 15 KB of the slot, so they are off by default. Add
+`-Dsatellite_EXTRA_CONF_FILE=bringup.conf` after the `--`, and then
+`gpio info`, `gpio get gpioc 15`, `gpio set gpiob 3 1` and
 `adc ads124s08@0 read 0` work from the USB shell.
 
 There is no HSE crystal, so USB runs from HSI48; the board's `board.c`

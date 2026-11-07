@@ -1,0 +1,102 @@
+# SPDX-License-Identifier: GPL-3.0-only
+#
+# Builds both firmwares with MCUboot (sysbuild), the browser tool around
+# them, and publishes the lot on GitHub Pages: the tool offers exactly the
+# images built from this commit.
+#
+# Signing: with a repository secret MCUBOOT_SIGNING_KEY (an ECDSA P-256
+# PEM, `imgtool keygen -t ecdsa-p256 -k key.pem`), images and MCUboot use
+# that key; without it they use MCUboot's public development key. A board
+# only accepts updates signed with the key its MCUboot was built with.
+#
+# Repository settings: Pages -> Source: GitHub Actions.
+
+name: Web tool
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - firmware/**
+      - tools/webtool/**
+      - west.yml
+      - .github/workflows/webtool.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: ws/alturia
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Zephyr workspace
+        working-directory: ws
+        run: |
+          pip install west
+          west init -l alturia
+          west update --narrow -o=--depth=1
+          west packages pip --install
+          west blobs fetch hal_espressif
+          west sdk install -t arm-zephyr-eabi xtensa-espressif_esp32s3_zephyr-elf
+
+      - name: Firmware
+        working-directory: ws/alturia/firmware
+        env:
+          MCUBOOT_SIGNING_KEY: ${{ secrets.MCUBOOT_SIGNING_KEY }}
+        run: |
+          key=()
+          if [ -n "$MCUBOOT_SIGNING_KEY" ]; then
+            printf '%s\n' "$MCUBOOT_SIGNING_KEY" > "$RUNNER_TEMP/mcuboot.pem"
+            key=("-DSB_CONFIG_BOOT_SIGNATURE_KEY_FILE=\"$RUNNER_TEMP/mcuboot.pem\"")
+          fi
+          west build --sysbuild -b alturia_controller/esp32s3/procpu -d build-controller controller \
+            -- -DBOARD_ROOT="$PWD" "${key[@]}"
+          west build --sysbuild -b alturia_satellite -d build-satellite satellite \
+            -- -DBOARD_ROOT="$PWD" "${key[@]}"
+          rm -f "$RUNNER_TEMP/mcuboot.pem"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ws/alturia/tools/webtool/package-lock.json
+
+      - name: Web tool
+        working-directory: ws/alturia/tools/webtool
+        run: |
+          npm ci
+          npm test
+          npm run build
+          npm run firmware -- --out dist \
+            ../../firmware/build-controller/controller/zephyr/zephyr.signed.bin \
+            ../../firmware/build-satellite/satellite/zephyr/zephyr.signed.bin
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ws/alturia/tools/webtool/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

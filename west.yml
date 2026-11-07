@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-only
+#
+# The Zephyr revision the firmware is built against, and the modules it
+# needs. For a workspace of its own next to the checkout:
+#
+#   west init -l alturia-launch-control   # from the directory above it
+#   west update --narrow
+#   west blobs fetch hal_espressif        # controller only
+#
+# CI builds the release images from this (.github/workflows/webtool.yml).
+
+manifest:
+  remotes:
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
+
+  projects:
+    - name: zephyr
+      remote: zephyrproject-rtos
+      revision: 25851fa15cdc2dc9c395807bce97fa81c46c10ee
+      import:
+        name-allowlist:
+          - cmsis
+          - cmsis_6
+          - hal_espressif
+          - hal_stm32
+          - loramac-node
+          - lvgl
+          - mbedtls
+          - mcuboot
+          - picolibc
+          - tf-psa-crypto
+          - zcbor

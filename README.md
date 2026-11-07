@@ -73,6 +73,7 @@ firmware/
   boards/        out-of-tree Zephyr boards alturia_controller, alturia_satellite
   lora_bench/    link bring-up on two Heltec WiFi LoRa 32 V4 boards
 tools/radiosim/  radio network simulator with web UI
+tools/webtool/   browser tool: firmware version, updates and shell over USB
 ```
 
 Good places to start:
@@ -94,20 +95,27 @@ yet.
 ## Building
 
 The firmware needs a Zephyr tree set up with `west`. It is developed
-against upstream Zephyr main (v4.4.0-16164-gf4656a39deb), without patches.
+against upstream Zephyr main without patches; [`west.yml`](west.yml) pins
+the revision and lists the modules it uses.
 
 ```sh
 # Controller UI on the desktop, with an emulated display
 west build -b native_sim firmware/controller && ./build/zephyr/zephyr.exe
 
-# Controller hardware
-west build -b alturia_controller/esp32s3/procpu -d build-board firmware/controller
+# Controller hardware: MCUboot and the app, signed
+west build --sysbuild -b alturia_controller/esp32s3/procpu -d build-board \
+    firmware/controller -- -DBOARD_ROOT=$PWD/firmware
 west flash -d build-board
 
 # Satellite hardware (USB DFU)
-west build -b alturia_satellite -d build-board firmware/satellite
+west build --sysbuild -b alturia_satellite -d build-board \
+    firmware/satellite -- -DBOARD_ROOT=$PWD/firmware
 west flash -d build-board -r dfu-util
 ```
+
+With MCUboot on board, later updates can go through the browser:
+[tools/webtool](tools/webtool/README.md) shows the firmware version,
+installs new images over USB, and opens the shell.
 
 For board-specific details, see
 [firmware/satellite/README.md](firmware/satellite/README.md) and
