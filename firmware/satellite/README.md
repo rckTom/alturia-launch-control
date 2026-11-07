@@ -33,8 +33,23 @@ panel, which is PyroStage(7 − n):
 source ~/zephyrproject/venv/bin/activate
 west build --sysbuild -b alturia_satellite -d build-board -p always . -- -DBOARD_ROOT=$PWD/..
 west flash -d build-board                # ST-LINK on J3
-west flash -d build-board -r dfu-util    # or USB DFU: hold BOOT0 (SW1) through a reset
 ```
+
+Over USB, with the board in the ROM DFU bootloader (`stty -F
+/dev/ttyACM0 1200` while the app runs, or hold BOOT0/SW1 through a reset),
+write the app first and MCUboot last:
+
+```sh
+dfu-util -d 0483:df11 -a 0 -s 0x0800a000 -D build-board/satellite/zephyr/zephyr.signed.bin
+dfu-util -d 0483:df11 -a 0 -s 0x08000000:leave -D build-board/mcuboot/zephyr/zephyr.bin
+```
+
+`:leave` makes the ROM bootloader jump to the address just written, so it
+has to be MCUboot's; a jump into the signed app lands on its header and
+hangs until the next power cycle. `west flash -r dfu-util` writes MCUboot
+first and leaves DFU right after it, before the app is written. The
+"Error during download get_status" after the leave request is harmless.
+Once MCUboot is on the board, updates go through the browser tool.
 
 Sysbuild puts MCUboot in front of the app (the board's `Kconfig.sysbuild`)
 and gives the app mcumgr on its USB shell, so later updates can go through

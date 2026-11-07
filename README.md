@@ -107,10 +107,9 @@ west build --sysbuild -b alturia_controller/esp32s3/procpu -d build-board \
     firmware/controller -- -DBOARD_ROOT=$PWD/firmware
 west flash -d build-board
 
-# Satellite hardware (USB DFU)
+# Satellite hardware; flashing over USB DFU: firmware/satellite/README.md
 west build --sysbuild -b alturia_satellite -d build-board \
     firmware/satellite -- -DBOARD_ROOT=$PWD/firmware
-west flash -d build-board -r dfu-util
 ```
 
 With MCUboot on board, later updates can go through the browser:
