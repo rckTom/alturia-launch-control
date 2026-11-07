@@ -255,11 +255,9 @@ async function reconnectAfterReset(timeoutMs: number): Promise<boolean> {
       sleep(8000).then(() => false),
     ])
     rebootWaiter = undefined
-    if (!dropped) {
-      // Some hosts keep the port open across a quick re-enumeration.
-      await link?.close().catch(() => {})
-      link = undefined
-    }
+    // The controller's USB Serial/JTAG is part of the chip's hardware and
+    // may stay up through the reset: then the open port just carries on.
+    if (!dropped && link) return true
   }
   const until = Date.now() + timeoutMs
   while (Date.now() < until) {
@@ -400,7 +398,19 @@ async function restartInto(hash: Uint8Array, version: string, total: number) {
     note('The device did not come back on USB. Reconnect it by hand.', true)
     return
   }
+  // The controller's USB Serial/JTAG port can stay up through the reset,
+  // so the port may be open while MCUboot still swaps (some 15 s): keep
+  // asking until the app answers.
   state.progress = { stage: 'Starting', done: total, total }
+  const answerBy = Date.now() + 90000
+  while (link && Date.now() < answerBy) {
+    try {
+      await link.smp.echo('alturia')
+      break
+    } catch {
+      await sleep(1000)
+    }
+  }
   await probe()
   if ((state.phase as Phase) !== 'ready') {
     state.progress = null
