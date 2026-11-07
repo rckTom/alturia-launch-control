@@ -108,6 +108,11 @@ export function typeText(s: string) {
   if (link) void link.writeText(s).catch(() => {})
 }
 
+/** The open port's SMP client, for other mcumgr groups (the ignition log). */
+export function smpClient() {
+  return link?.smp
+}
+
 // ---- published firmware ----
 
 export async function loadManifest() {

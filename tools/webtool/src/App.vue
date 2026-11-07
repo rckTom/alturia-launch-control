@@ -5,6 +5,7 @@ import Lcd from './components/Lcd.vue'
 import Cap from './components/Cap.vue'
 import Lamp from './components/Lamp.vue'
 import Segments from './components/Segments.vue'
+import IgnitionLog from './components/IgnitionLog.vue'
 import {
   BOARD_NAMES,
   activeSlot,
@@ -13,10 +14,12 @@ import {
   connect,
   disconnect,
   fallbackSlot,
+  kind,
   loadFile,
   published,
   publishedStatus,
   rollBack,
+  smpClient,
   state,
   updateLocal,
   updatePublished,
@@ -183,6 +186,13 @@ function short(h: Uint8Array) {
         </section>
       </aside>
     </div>
+
+    <IgnitionLog
+      v-if="(ready || state.phase === 'busy') && kind() !== 'other'"
+      :smp="smpClient()"
+      :kind="kind()"
+      :enabled="ready"
+    />
 
     <footer class="message" :class="{ error: state.message?.error }" aria-live="polite">
       {{ state.message?.text ?? state.manifestNote ?? '' }}
