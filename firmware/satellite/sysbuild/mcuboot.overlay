@@ -1,12 +1,18 @@
 /*
  * SPDX-License-Identifier: GPL-3.0-only
  *
+ * MCUboot on the satellite. This file replaces MCUboot's own app.overlay,
+ * so it has to repeat what that one says: MCUboot links for the boot
+ * partition. Without it, MCUboot linked for slot 0 and its reset vector
+ * pointed into the app (found the hard way on the board, 2026-11-07).
+ *
  * MCUboot has no USB stack, so its log goes to the UART header J2
  * (115200 8N1) instead of the CDC ACM port the app uses.
  */
 
 / {
 	chosen {
+		zephyr,code-partition = &boot_partition;
 		zephyr,console = &lpuart1;
 	};
 };
