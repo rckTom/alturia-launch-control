@@ -49,8 +49,21 @@ static void dfu_request_write(uint32_t a, uint32_t b)
 	LL_PWR_DisableBkUpAccess();
 }
 
+/*
+ * Flash error flags can still be set from before the reset: after a ROM
+ * DFU session the satellite's first flash write (an mcumgr upload)
+ * failed with "flash write failed" and the next one went through, which
+ * is Zephyr's driver reporting a stale flag once and then clearing it.
+ * Clear them here, in MCUboot and the app alike.
+ */
+#define FLASH_SR_ERRORS                                                                            \
+	(FLASH_SR_OPERR | FLASH_SR_PROGERR | FLASH_SR_WRPERR | FLASH_SR_PGAERR | FLASH_SR_SIZERR |  \
+	 FLASH_SR_PGSERR | FLASH_SR_MISERR | FLASH_SR_FASTERR | FLASH_SR_RDERR | FLASH_SR_OPTVERR)
+
 void board_early_init_hook(void)
 {
+	FLASH->SR = FLASH->SR & FLASH_SR_ERRORS;
+
 	LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_RTCAPB);
 	if (TAMP->BKP0R != DFU_MAGIC || TAMP->BKP1R != ~DFU_MAGIC) {
 		LL_APB1_GRP1_DisableClock(LL_APB1_GRP1_PERIPH_RTCAPB);

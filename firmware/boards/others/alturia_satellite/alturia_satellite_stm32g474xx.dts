@@ -234,6 +234,15 @@ zephyr_udc0: &usb {
 
 #include <../boards/common/usb/cdc_acm_serial.dtsi>
 
+/* mcumgr writes its SMP replies byte by byte (uart_poll_out). Without
+ * flow control the CDC ACM driver drops those bytes when its TX FIFO is
+ * full, e.g. behind shell log output, and long replies arrived cut short.
+ * With it, poll_out waits for room instead.
+ */
+&board_cdc_acm_uart {
+	hw-flow-control;
+};
+
 /* UART header J2: pin 2 TX, pin 3 RX, 3V3 levels. */
 &lpuart1 {
 	pinctrl-0 = <&lpuart1_tx_pb11 &lpuart1_rx_pb10>;

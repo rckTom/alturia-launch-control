@@ -260,6 +260,7 @@ export class SmpClient {
   ): Promise<void> {
     let off = 0
     let retries = 0
+    let restarted = false
     while (off < data.length) {
       if (signal?.aborted) throw new Error('upload cancelled')
       const n = Math.min(chunk, data.length - off)
@@ -274,6 +275,14 @@ export class SmpClient {
       } catch (e) {
         if (e instanceof SmpTimeout && retries < 5) {
           retries++
+          continue
+        }
+        // A flash write or erase error ends the device's upload session.
+        // Start over once: the satellite's first flash write after a ROM
+        // DFU session failed on a stale error flag, the next one worked.
+        if (e instanceof SmpError && e.group === GROUP_IMAGE && (e.rc === 12 || e.rc === 13) && !restarted) {
+          restarted = true
+          off = 0
           continue
         }
         throw e
