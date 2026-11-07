@@ -10,8 +10,13 @@
  * That is what makes it safe to repeat FIRE.
  *
  * ARM runs its checks in the order the hardware allows (arm_run()):
- *   1. K1 open: each output's continuity reads OK, which also proves its
- *      low-side FET (not shorted with it off, conducting with it on);
+ *   1. K1 open: each output's continuity reads OK or shorted, which also
+ *      proves its low-side FET (not shorted with it off, conducting with
+ *      it on). A shorted load is allowed: firing into it is the operator's
+ *      call, and the TPS1HB08's current limit (~23.5 A with its 6k8 ILIM)
+ *      and thermal shutdown protect the channel. A low side that conducts
+ *      while off reads as a failed measurement, not as a short, and is
+ *      refused;
  *   2. K1 closed, both FETs off: each high side switches, PYRO_H near 0 V
  *      off and near the rail on; the low side is known good, so no current
  *      reaches the igniter;
@@ -152,7 +157,7 @@ static void arm_run(uint8_t mask, uint32_t gen)
 	k_mutex_lock(&lock, K_FOREVER);
 	for (int ch = 0; ch < NUM_CHANNELS; ch++) {
 		if ((mask & BIT(ch)) &&
-		    (st.cont[ch] != CONT_OK || (cont_failed & BIT(ch)) ||
+		    (st.cont[ch] == CONT_OPEN || (cont_failed & BIT(ch)) ||
 		     now - cont_at[ch] > CONT_MAX_AGE_MS)) {
 			refused |= BIT(ch);
 		}

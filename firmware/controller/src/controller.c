@@ -398,7 +398,7 @@ static void fault(const char *fmt, int sat)
 	v.fault_active = true;
 }
 
-static const char *pad_problem(int p)
+static const char *pad_problem(int p, bool *blocks)
 {
 	static const char *const names[3][2] = {
 		{"IGN OPEN", "IGN SHORT"},
@@ -410,20 +410,28 @@ static const char *pad_problem(int p)
 	uint8_t chans[3] = {cfg->ign, cfg->fill, cfg->vent};
 	int n = cfg->type == PAD_HYBRID ? 3 : 1;
 
+	const char *shorted = NULL;
+
+	*blocks = false;
 	if (cfg->type == PAD_OFF || !v.sat[cfg->sat].have_status) {
 		return NULL;
 	}
+	/* An open output first: that one blocks the launch, a short does not. */
 	for (int i = 0; i < n; i++) {
 		switch (st->cont[chans[i]]) {
 		case CONT_OPEN:
+			*blocks = true;
 			return names[i][0];
 		case CONT_SHORT:
-			return names[i][1];
+			if (!shorted) {
+				shorted = names[i][1];
+			}
+			break;
 		default:
 			break;
 		}
 	}
-	return NULL;
+	return shorted;
 }
 
 /* Per satellite, the channels of the pads in @p set */
@@ -477,13 +485,16 @@ static const char *arm_block_reason(void)
 	return NULL;
 }
 
-/* Continuity is judged while armed, from the satellite's armed readings */
+/*
+ * Continuity is judged while armed, from the satellite's armed readings.
+ * An open output blocks; a shorted one is shown but may be fired.
+ */
 static const char *launch_block_reason(void)
 {
 	static char buf[48];
 
 	for (int p = 0; p < NUM_PADS; p++) {
-		if ((v.selected & BIT64(p)) && v.pad[p].problem) {
+		if ((v.selected & BIT64(p)) && v.pad[p].problem && v.pad[p].problem_blocks) {
 			snprintf(buf, sizeof(buf), "%s: %s", pad_name(p), v.pad[p].problem);
 			return buf;
 		}
@@ -1530,10 +1541,9 @@ static void tick_arming(int64_t now)
 		if (involved(sat) && fresh(sat) && refused) {
 			int ch = __builtin_ctz(refused);
 			const struct sat_status *st = &v.sat[sat].st;
-			const char *why = !st->key_armed            ? "key switch SAFE"
-					  : st->cont[ch] == CONT_SHORT ? "output shorted"
-					  : st->cont[ch] == CONT_OPEN  ? "output open"
-								       : "high side failed";
+			const char *why = !st->key_armed           ? "key switch SAFE"
+					  : st->cont[ch] == CONT_OPEN ? "output open"
+								      : "self-test failed";
 
 			disarm_all();
 			message(MSG_FAULT, "Satellite %c refused ARM: CH%d %s", sat_name(sat), ch + 1,
@@ -1746,7 +1756,7 @@ void ctrl_tick(void)
 		}
 	}
 	for (int p = 0; p < NUM_PADS; p++) {
-		v.pad[p].problem = pad_problem(p);
+		v.pad[p].problem = pad_problem(p, &v.pad[p].problem_blocks);
 	}
 	if (!v.settings.active) {
 		fix_cursor();

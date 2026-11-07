@@ -569,21 +569,10 @@ static void handle_cmd(int sat, const struct link_cmd *cmd, int64_t now)
 				return;
 			}
 			/*
-			 * Pre-arm check (spec 11.3): measure disarmed and refuse if an
-			 * output reads shorted, since a shorted FET plus the closed arm
-			 * relay would fire. The sim treats any short as a shorted FET.
+			 * Like the satellite (commands.c): a shorted load arms and only
+			 * shows as SHORT; the sim has no failed low-side FET to refuse.
 			 */
 			st->arm_refused = 0;
-			for (int ch = 0; ch < NUM_CHANNELS; ch++) {
-				if ((cmd->mask & BIT(ch)) && s->load_mohm[ch] < SHORT_BELOW_MOHM) {
-					st->arm_refused |= BIT(ch);
-				}
-			}
-			if (st->arm_refused) {
-				LOG_WRN("sat %c: ARM refused, shorted outputs 0x%02x", sat_name(sat),
-					st->arm_refused);
-				return;
-			}
 			st->state = SAT_ARMED;
 			st->armed_mask = cmd->mask;
 			LOG_INF("sat %c ARMED, mask 0x%02x", sat_name(sat), cmd->mask);

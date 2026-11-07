@@ -83,6 +83,12 @@ struct sat_view {
 struct pad_view {
 	/* Channel with a continuity problem, as text ("IGN OPEN"), or NULL */
 	const char *problem;
+	/*
+	 * Whether it stops a launch: an open output does, a shorted one only
+	 * warns. Firing into a short is up to the operator; the TPS1HB08
+	 * current limit and thermal shutdown protect the channel.
+	 */
+	bool problem_blocks;
 	enum hybrid_op op;
 	int64_t fill_start;
 };

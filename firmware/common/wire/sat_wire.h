@@ -48,7 +48,7 @@ struct sat_status {
 	uint8_t firing_mask;  /* channels currently driven by a fire pulse */
 	uint8_t valve_mask;   /* channels continuously energized (valves) */
 	uint8_t fire_count;   /* incremented for every accepted FIRE command */
-	uint8_t arm_refused;  /* channels that failed the pre-arm short check */
+	uint8_t arm_refused;  /* channels that failed ARM's checks: open, FET, high side */
 	uint8_t cmd_id;       /* the last request executed, 0 for none yet */
 	int32_t res_mohm[NUM_CHANNELS];
 	enum continuity cont[NUM_CHANNELS];
