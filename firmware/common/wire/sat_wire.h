@@ -21,6 +21,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "ignlog_rec.h"
+
 #define NUM_CHANNELS 6
 
 /* Reported resistance for "no measurable connection". */
@@ -117,5 +119,79 @@ size_t wire_encode_status(const struct sat_status *st, bool full, uint8_t *out);
  * differences between seqs stay meaningful.
  */
 int wire_decode_status(const uint8_t *buf, size_t len, struct sat_status *st);
+
+/*
+ * Ignition log download (documentation/ignition_log.md). A log poll
+ * addresses one satellite, carries no command, and asks for either the
+ * index of its records or one chunk of a record. The satellite answers in
+ * its slot with the index or the chunk instead of its status. The
+ * controller sends log polls only while nothing on the network is armed.
+ *
+ *   log poll  [6][op u8][seq u32][off u16]
+ *   index     [7][store_id u16][boots u16][now_ms u32][scale u32][count u8]
+ *             count x [seq u32][t_fire_ms u32][boot u16][n u16][period_us u16]
+ *                     [peak u16][open_idx u16][channel u8][flags u8]
+ *   chunk     [8][seq u32][off u16][total u16][data]
+ *
+ * A chunk request for a record the satellite no longer has is answered
+ * with the index, so the controller learns what is there.
+ */
+enum wire_log_op {
+	WIRE_LOG_OP_INDEX,
+	WIRE_LOG_OP_CHUNK,
+};
+
+#define WIRE_LOG_POLL_LEN      8
+#define WIRE_LOG_INDEX_MAX     8
+#define WIRE_LOG_ENTRY_LEN     20
+#define WIRE_LOG_INDEX_LEN(n)  (14 + (n) * WIRE_LOG_ENTRY_LEN)
+#define WIRE_LOG_CHUNK_HDR     9
+#define WIRE_LOG_CHUNK_MAX     192
+#define WIRE_LOG_CHUNK_LEN     (WIRE_LOG_CHUNK_HDR + WIRE_LOG_CHUNK_MAX)
+
+struct wire_log_req {
+	uint8_t op;      /* enum wire_log_op */
+	uint32_t seq;    /* WIRE_LOG_OP_CHUNK: the record */
+	uint16_t off;    /* and the offset into it */
+};
+
+struct wire_log_index {
+	uint16_t store_id;  /* changes when the satellite's store starts over */
+	uint16_t boots;     /* the satellite's boot count now */
+	uint32_t now_ms;    /* and its uptime, for the age of this boot's records */
+	uint32_t scale_na;  /* nA per code, as in the records */
+	uint8_t count;
+	struct ignlog_entry e[WIRE_LOG_INDEX_MAX];
+};
+
+struct wire_log_chunk {
+	uint32_t seq;
+	uint16_t off;
+	uint16_t total;      /* the record's size */
+	uint8_t len;
+	const uint8_t *data; /* into the decoded buffer */
+};
+
+enum wire_reply_kind {
+	WIRE_REPLY_STATUS,
+	WIRE_REPLY_LOG_INDEX,
+	WIRE_REPLY_LOG_CHUNK,
+	WIRE_REPLY_UNKNOWN,
+};
+
+/* What a satellite's reply carries, by its type byte. */
+enum wire_reply_kind wire_reply_kind(const uint8_t *buf, size_t len);
+
+size_t wire_encode_log_poll(const struct wire_log_req *req, uint8_t *out);
+/* -EINVAL unless @p buf is a log poll. */
+int wire_decode_log_poll(const uint8_t *buf, size_t len, struct wire_log_req *req);
+
+/* @p out holds WIRE_LOG_INDEX_LEN(WIRE_LOG_INDEX_MAX). */
+size_t wire_encode_log_index(const struct wire_log_index *ix, uint8_t *out);
+int wire_decode_log_index(const uint8_t *buf, size_t len, struct wire_log_index *ix);
+
+/* @p out holds WIRE_LOG_CHUNK_LEN; c->len is at most WIRE_LOG_CHUNK_MAX. */
+size_t wire_encode_log_chunk(const struct wire_log_chunk *c, uint8_t *out);
+int wire_decode_log_chunk(const uint8_t *buf, size_t len, struct wire_log_chunk *c);
 
 #endif /* SAT_WIRE_H_ */

@@ -297,6 +297,63 @@ zephyr_udc0: &usb {
 		#address-cells = <1>;
 		#size-cells = <0>;
 
+		/* SENSE_I_Pn: 560R over SNS, I_OUT / 5000 through it while
+		 * DIA_EN is high (satellite/src/ignlog.c).
+		 */
+		channel@0 {
+			reg = <0>;	/* SENSE_I_P1: channel 6's TPS1HB08 SNS */
+			zephyr,gain = "ADC_GAIN_1";
+			zephyr,reference = "ADC_REF_EXTERNAL0";
+			zephyr,vref-mv = <3300>;	/* +3.3VA */
+			zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+			zephyr,resolution = <12>;
+		};
+
+		channel@1 {
+			reg = <1>;	/* SENSE_I_P2: channel 5's TPS1HB08 SNS */
+			zephyr,gain = "ADC_GAIN_1";
+			zephyr,reference = "ADC_REF_EXTERNAL0";
+			zephyr,vref-mv = <3300>;	/* +3.3VA */
+			zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+			zephyr,resolution = <12>;
+		};
+
+		channel@2 {
+			reg = <2>;	/* SENSE_I_P3: channel 4's TPS1HB08 SNS */
+			zephyr,gain = "ADC_GAIN_1";
+			zephyr,reference = "ADC_REF_EXTERNAL0";
+			zephyr,vref-mv = <3300>;	/* +3.3VA */
+			zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+			zephyr,resolution = <12>;
+		};
+
+		channel@3 {
+			reg = <3>;	/* SENSE_I_P4: channel 3's TPS1HB08 SNS */
+			zephyr,gain = "ADC_GAIN_1";
+			zephyr,reference = "ADC_REF_EXTERNAL0";
+			zephyr,vref-mv = <3300>;	/* +3.3VA */
+			zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+			zephyr,resolution = <12>;
+		};
+
+		channel@4 {
+			reg = <4>;	/* SENSE_I_P5: channel 2's TPS1HB08 SNS */
+			zephyr,gain = "ADC_GAIN_1";
+			zephyr,reference = "ADC_REF_EXTERNAL0";
+			zephyr,vref-mv = <3300>;	/* +3.3VA */
+			zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+			zephyr,resolution = <12>;
+		};
+
+		channel@5 {
+			reg = <5>;	/* SENSE_I_P6: channel 1's TPS1HB08 SNS */
+			zephyr,gain = "ADC_GAIN_1";
+			zephyr,reference = "ADC_REF_EXTERNAL0";
+			zephyr,vref-mv = <3300>;	/* +3.3VA */
+			zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+			zephyr,resolution = <12>;
+		};
+
 		channel@6 {
 			reg = <6>;	/* V_PYRO_SENSE */
 			zephyr,gain = "ADC_GAIN_1";

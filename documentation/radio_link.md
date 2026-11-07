@@ -417,7 +417,7 @@ order of the set bits of the mask (the order of the reply slots).
 
 | Field | Contents |
 |---|---|
-| type | `3`: short status wanted, `5`: full status wanted |
+| type | `3`: short status wanted, `5`: full status wanted, `6`: log poll (see [Ignition log download](#ignition-log-download)) |
 | record byte 0 | command: `0` heartbeat, `1` ARM, `2` DISARM, `3` FIRE |
 | record byte 1 | channel mask: ARM channels to arm, FIRE channels to pulse |
 | record byte 2 | valve outputs wanted |
@@ -472,6 +472,32 @@ order of the set bits of the mask (the order of the reply slots).
 - **Disagreement:** if a satellite reports a state other than SAFE while the
   controller has nothing armed on it, the controller sends DISARM.
 
+### Ignition log download
+
+A **log poll** addresses one satellite (one bit in the mask, one slot) and
+carries no command. Its reply is a log reply instead of the status. The
+satellite still counts it as a poll addressed to it, so its heartbeat
+continues.
+
+| Frame | Layout |
+|---|---|
+| log poll, type `6` | `[6][op u8][seq u32][off u16]`; op 0: index, op 1: chunk |
+| index, type `7` | `[7][store_id u16][boots u16][now_ms u32][scale u32][count u8]` + `count` × 20 bytes `[seq u32][t_fire_ms u32][boot u16][n u16][period_us u16][peak u16][open_idx u16][channel u8][flags u8]` |
+| chunk, type `8` | `[8][seq u32][off u16][total u16][data ≤ 192]` |
+
+- **Slot length:** the controller sizes the slot for the larger of the two
+  replies, 201 bytes, which is about 180 ms on air.
+- **A record that is gone:** a chunk request for it is answered with the
+  index.
+- **When:** the controller sends log polls only while it is SAFE and no
+  request waits for its acknowledgement, one at a time, between the
+  regular polls.
+- **Speed:** about 0.7 KB/s, so a one-second record of 2042 bytes takes
+  about 3 s.
+
+What is logged and how the controller uses it is in
+[ignition_log.md](ignition_log.md).
+
 ## Storage
 
 Pairings are kept in Zephyr settings:
@@ -502,6 +528,7 @@ anyone with a debugger can read the keys.
 | Controller | `ctrl link` | network id, joined satellites, polls sent, CSMA counters, channel utilization, drop counters |
 | Satellite | `sat link` | slot, session, polls, replies, late and busy slots, utilization, drop counters |
 | Satellite | `sat pair [confirm\|reject]`, `sat unpair` | pairing from the USB shell |
+| Satellite | `sat ignlog [dump <seq>\|clear]` | the ignition log: records, one as CSV, erase |
 | Controller on `native_sim` | `sat pair`, `sat confirm`, `sat link <a-h> off`, `sat loss` | drive the simulated satellites |
 
 Received frames that are dropped are counted by reason: malformed, foreign

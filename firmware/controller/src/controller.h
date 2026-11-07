@@ -25,8 +25,10 @@
  *  - Messages: the last events, newest first.
  *  - Diagnostics, a menu of its own: the button test, which shows every
  *    button press instead of acting on it (holding BACK leaves), the
- *    battery, and Stacker, a falling-block game (game.h) that takes the
- *    D-pad for itself until BACK pauses it.
+ *    battery, the ignition log (the current of a satellite's last fire
+ *    pulses, downloaded over LoRa, see ignlog.h), and Stacker, a
+ *    falling-block game (game.h) that takes the D-pad for itself until
+ *    BACK pauses it.
  *  - Power off.
  * While any of these is open, the D-pad acts on it, BACK backs out one
  * level, and ARM, FILL and VENT are refused. The power button asks to
@@ -137,9 +139,31 @@ enum settings_entry {
 enum diag_entry {
 	DIAG_BUTTONS,
 	DIAG_BATTERY,
+	DIAG_IGNLOG,
 	DIAG_GAME,
 	DIAG_COUNT,
 	DIAG_NONE = -1,
+};
+
+/*
+ * Ignition log, from the diagnostics menu: pick a satellite, then one of
+ * its records (newest first), then its current over time.
+ */
+enum ignlog_page {
+	IGNLOG_PAGE_SATS,
+	IGNLOG_PAGE_LIST,
+	IGNLOG_PAGE_CHART,
+};
+
+/* The chart's zoomed-in window: where an igniter burns through */
+#define IGNLOG_ZOOM_MS 50
+
+struct ignlog_view {
+	enum ignlog_page page;
+	int sat;          /* the satellite, and the cursor on the first page */
+	int cursor;       /* record list row, 0 = newest */
+	uint32_t seq;     /* the record on the chart */
+	bool zoom;        /* chart: the first IGNLOG_ZOOM_MS only */
 };
 
 /* Satellites screen, opened from the settings screen */
@@ -197,6 +221,7 @@ struct ctrl_view {
 	struct pair_view pair;        /* opened from the satellites screen */
 	struct menu_view diag_menu;   /* from the settings menu */
 	int diag;                     /* open diagnostics screen, DIAG_NONE if none */
+	struct ignlog_view ignlog;    /* diag == DIAG_IGNLOG */
 	bool power_confirm;       /* asking whether to switch off */
 	bool powering_off;        /* switched off, waiting for the power to go */
 	/* Why arming is currently not possible, NULL if it is */

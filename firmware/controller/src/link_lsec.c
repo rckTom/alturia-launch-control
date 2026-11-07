@@ -11,6 +11,7 @@
 #include <zephyr/logging/log.h>
 
 #include "ctrl_link.h"
+#include "ignlog.h"
 #include "link.h"
 #include "sat_wire.h"
 #include "pads.h"
@@ -56,6 +57,11 @@ static void on_event(const struct lsec_event *ev)
 	switch (ev->type) {
 	case LSEC_EV_DATA:
 		if (sat < 0 || sat >= NUM_SATS || ev->group) {
+			return;
+		}
+		/* Log replies go to the ignition log download (ignlog.c). */
+		if (wire_reply_kind(ev->data, ev->len) != WIRE_REPLY_STATUS) {
+			ignlog_rx(sat, ev->data, ev->len);
 			return;
 		}
 		/* A short status updates the last one; the full-only fields stay. */
@@ -112,6 +118,19 @@ int link_poll(const struct link_cmd cmds[NUM_SATS], bool full)
 
 	len = wire_encode_poll(cmds, NUM_SATS, mask, full, buf);
 	return ctrl_link_poll(mask, buf, len, full ? WIRE_STATUS_LEN : WIRE_STATUS_SHORT_LEN);
+}
+
+int link_log_poll(int sat, const struct wire_log_req *req)
+{
+	uint8_t buf[WIRE_LOG_POLL_LEN];
+	size_t len = wire_encode_log_poll(req, buf);
+	/* The index, or a chunk; a chunk request may be answered with the index. */
+	size_t reply = MAX(WIRE_LOG_CHUNK_LEN, WIRE_LOG_INDEX_LEN(WIRE_LOG_INDEX_MAX));
+
+	if (sat < 0 || sat >= NUM_SATS || !ctrl_link_joined(SLOT(sat))) {
+		return -ENOTCONN;
+	}
+	return ctrl_link_poll(BIT(sat), buf, len, reply);
 }
 
 int64_t link_next_poll_ms(uint32_t period_ms)

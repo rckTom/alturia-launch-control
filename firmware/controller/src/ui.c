@@ -64,6 +64,7 @@ void ui_init(void)
 	ui_pads_create(scr);
 	ui_sats_create(scr);
 	ui_diag_create(scr);
+	ui_ignlog_create(scr);
 	ui_game_create(scr);
 	ui_dialogs_create(scr);
 
@@ -104,6 +105,9 @@ static lv_obj_t *current_view(const struct ctrl_view *v, int64_t now)
 	}
 	if (v->diag == DIAG_GAME) {
 		return ui_game_refresh(now);
+	}
+	if (v->diag == DIAG_IGNLOG) {
+		return ui_ignlog_refresh(v);
 	}
 	if (v->diag != DIAG_NONE) {
 		return ui_diag_refresh(v);

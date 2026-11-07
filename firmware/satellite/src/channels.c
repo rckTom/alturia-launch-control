@@ -7,6 +7,7 @@
 #include <zephyr/drivers/adc.h>
 #include <zephyr/logging/log.h>
 
+#include "ignlog.h"
 #include "satellite.h"
 
 LOG_MODULE_REGISTER(channels, LOG_LEVEL_INF);
@@ -53,6 +54,10 @@ static int16_t sample_buf;
 /* Low sides on: a fire pulse in progress, and valves held open. */
 static uint8_t pulsing;
 static uint8_t valves;
+
+/* DIA_EN: on from the shell (sat diag), or held for the ignition log. */
+static bool dia_user;
+static atomic_t dia_hold;
 
 static void pulse_end_fn(struct k_work *work);
 static int update_outputs(int ch);
@@ -540,6 +545,7 @@ static void pulse_end_fn(struct k_work *work)
 			(void)update_outputs(ch);
 		}
 	}
+	ignlog_stop();
 }
 
 int channels_pulse(uint8_t mask, uint32_t ms)
@@ -551,6 +557,8 @@ int channels_pulse(uint8_t mask, uint32_t ms)
 		return -EBUSY;
 	}
 
+	/* The current sense goes on before the outputs do. */
+	ignlog_start(mask, ms);
 	pulsing = mask;
 	for (int ch = 0; ch < SAT_CHANNELS; ch++) {
 		if (mask & BIT(ch)) {
@@ -637,7 +645,14 @@ int channels_rail_mv(int input, int32_t *mv)
 
 int channels_diagnostics(bool on)
 {
-	return gpio_pin_set_dt(&hs_dia_en, on);
+	dia_user = on;
+	return gpio_pin_set_dt(&hs_dia_en, dia_user || atomic_get(&dia_hold));
+}
+
+void channels_sense_hold(bool on)
+{
+	atomic_set(&dia_hold, on);
+	(void)gpio_pin_set_dt(&hs_dia_en, dia_user || on);
 }
 
 int channels_latch_clear(void)

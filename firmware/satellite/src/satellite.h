@@ -70,6 +70,8 @@ int channels_continuity_mohm(int ch, struct cont_result *res);
 int channels_check_high(int ch, int32_t *off_uv, int32_t *on_uv);
 int channels_rail_mv(int input, int32_t *mv);
 int channels_diagnostics(bool on);
+/* DIA_EN on regardless of channels_diagnostics(), for the ignition log. */
+void channels_sense_hold(bool on);
 int channels_latch_clear(void);
 
 /*
@@ -96,7 +98,8 @@ bool arm_relay_on(void);
 int arm_key_on(void);
 
 /* Battery voltage, VBAT_FUSED. There is no fire-rail current monitor:
- * the TPS1HB08 current sense only sees current while a channel conducts.
+ * the TPS1HB08 current sense only sees current while a channel conducts,
+ * which is what the ignition log records (ignlog.h).
  */
 int rail_vbat_mv(int32_t *mv);
 

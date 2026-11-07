@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "ignlog.h"
 #include "sat_link.h"
 #include "satellite.h"
 
@@ -200,6 +201,88 @@ static int cmd_beep(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+static void print_entry(const struct shell *sh, const struct ignlog_entry *e, uint32_t scale,
+			const struct ignlog_store_view *info)
+{
+	int32_t peak = ignlog_ma(e->peak_code, scale);
+	char open[16] = "-";
+	char age[24];
+
+	if (e->open_idx != IGNLOG_OPEN_NONE) {
+		snprintk(open, sizeof(open), "%u ms",
+			 (unsigned)((uint32_t)e->open_idx * e->period_us / 1000));
+	}
+	if (e->boot == info->boots) {
+		snprintk(age, sizeof(age), "%u s ago", (info->now_ms - e->t_fire_ms) / 1000);
+	} else {
+		snprintk(age, sizeof(age), "boot %u", e->boot);
+	}
+	shell_print(sh, "#%-4u CH%d  peak %2d.%02d A  open %-8s %4u samples  %s%s%s%s%s", e->seq,
+		    e->channel + 1, peak / 1000, (peak % 1000) / 10, open, e->n_samples, age,
+		    e->flags & IGNLOG_F_FAULT ? "  FAULT" : "",
+		    e->flags & IGNLOG_F_NO_CURRENT ? "  NO CURRENT" : "",
+		    e->flags & IGNLOG_F_TRUNCATED ? "  truncated" : "",
+		    e->flags & IGNLOG_F_OVERRUN ? "  overrun" : "");
+}
+
+static int cmd_ignlog(const struct shell *sh, size_t argc, char **argv)
+{
+	struct ignlog_store_view v;
+
+	ignlog_view(&v);
+	shell_print(sh, "store %04x, boot %u, %u record%s%s", v.store_id, v.boots, v.count,
+		    v.count == 1 ? "" : "s", ignlog_recording() ? ", recording" : "");
+	for (int i = 0; i < v.count; i++) {
+		print_entry(sh, &v.e[i], v.scale_na, &v);
+	}
+	return 0;
+}
+
+static int cmd_ignlog_dump(const struct shell *sh, size_t argc, char **argv)
+{
+	uint32_t seq = strtoul(argv[1], NULL, 10);
+	uint8_t hdr[IGNLOG_HDR_LEN];
+	struct ignlog_meta m;
+	size_t total;
+	int ret = ignlog_read(seq, 0, hdr, sizeof(hdr), &total);
+
+	if (ret != sizeof(hdr) || ignlog_meta_get(hdr, sizeof(hdr), &m)) {
+		shell_error(sh, "no record #%u", seq);
+		return -ENOENT;
+	}
+	shell_print(sh, "# record %u, CH%d, %u us per sample, pulse %u ms, V_PYRO min %u mV",
+		    seq, m.e.channel + 1, m.e.period_us, m.pulse_ms, m.vpyro_min_mv);
+	shell_print(sh, "t_ms,code,ma");
+	for (uint16_t i = 0; i < m.e.n_samples; i++) {
+		uint8_t b[2];
+
+		if (ignlog_read(seq, IGNLOG_HDR_LEN + 2 * (size_t)i, b, 2, &total) != 2) {
+			return -EIO;
+		}
+		uint16_t code = b[0] | b[1] << 8;
+		uint32_t us = (uint32_t)i * m.e.period_us;
+
+		shell_print(sh, "%u.%03u,%u,%d", us / 1000, us % 1000, code,
+			    ignlog_ma(code, m.scale_na));
+	}
+	return 0;
+}
+
+static int cmd_ignlog_clear(const struct shell *sh, size_t argc, char **argv)
+{
+	int ret = ignlog_clear();
+
+	shell_print(sh, "ignition log cleared: %d", ret);
+	return ret;
+}
+
+SHELL_STATIC_SUBCMD_SET_CREATE(ignlog_cmds,
+	SHELL_CMD_ARG(dump, NULL, "<seq> one record as CSV (ms, ADC code, mA)",
+		      cmd_ignlog_dump, 2, 0),
+	SHELL_CMD_ARG(clear, NULL, "forget all records", cmd_ignlog_clear, 1, 0),
+	SHELL_SUBCMD_SET_END
+);
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sat_cmds,
 	SHELL_CMD_ARG(arm, NULL, "<ch> <0|1>", cmd_arm, 3, 0),
 	SHELL_CMD_ARG(cont, NULL, "<ch> resistance across the output (ch 0-5 = panel 1-6)", cmd_cont, 2, 0),
@@ -214,6 +297,8 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sat_cmds,
 	SHELL_CMD_ARG(link, NULL, "link state and drop counters", cmd_link, 1, 0),
 	SHELL_CMD_ARG(beep, NULL, "play the start-up chime", cmd_beep, 1, 0),
 	SHELL_CMD_ARG(fault, NULL, "the fatal error that rebooted the satellite", cmd_fault, 1, 0),
+	SHELL_CMD_ARG(ignlog, &ignlog_cmds, "ignition current log of the last pulses",
+		      cmd_ignlog, 1, 0),
 	SHELL_SUBCMD_SET_END
 );
 

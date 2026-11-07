@@ -33,6 +33,8 @@ target_sources(app PRIVATE
 	src/battery.c
 	src/shell_cmds.c
 	src/link_lsec.c
+	src/ignlog.c
+	src/ui/ignlog.c
 	src/fonts/ui_font_18.c
 	src/fonts/ui_font_20.c
 	src/fonts/ui_font_28.c
@@ -53,6 +55,9 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../common/link/link_sec.cmake)
 # Command and status payloads, shared with the satellite.
 target_include_directories(app PRIVATE ../common/wire)
 target_sources(app PRIVATE ../common/wire/sat_wire.c)
+
+# Ignition log records, and their mcumgr group, shared with the satellite.
+include(${CMAKE_CURRENT_SOURCE_DIR}/../common/ignlog/ignlog.cmake)
 
 # Buzzer tunes, shared with the satellite.
 target_include_directories(app PRIVATE ../common/chime)

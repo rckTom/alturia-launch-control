@@ -55,6 +55,24 @@ config APP_FIRE_HOLD_MS
 	  The fire control must be held continuously for this long
 	  before the fire command is sent.
 
+config APP_IGNLOG_CACHE
+	int "Ignition log records cached"
+	default 8
+	help
+	  Records downloaded from the satellites' ignition logs that the
+	  controller keeps, for its diagnostics view and for the browser
+	  tool over mcumgr; the least recently used goes first. Each takes
+	  32 + 2 * APP_IGNLOG_MAX_SAMPLES bytes of DRAM, which is nearly
+	  full on the ESP32-S3 (the PSRAM is not enabled): 8 hold one
+	  satellite's whole log in some 17 KB.
+
+config APP_IGNLOG_MAX_SAMPLES
+	int "Samples per ignition log record"
+	default 1024
+	help
+	  The largest record the controller accepts; at least the
+	  satellite's SAT_IGNLOG_MAX_SAMPLES.
+
 rsource "../common/link/Kconfig"
 
 source "Kconfig.zephyr"

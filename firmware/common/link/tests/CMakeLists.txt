@@ -12,3 +12,7 @@ target_sources(app PRIVATE src/main.c src/sched.c)
 # The command and status payloads that travel inside the link's frames.
 target_sources(app PRIVATE src/wire.c ${CMAKE_CURRENT_SOURCE_DIR}/../../wire/sat_wire.c)
 target_include_directories(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../wire)
+
+# The ignition log records and their frames.
+target_sources(app PRIVATE src/ignlog.c ${CMAKE_CURRENT_SOURCE_DIR}/../../ignlog/ignlog_rec.c)
+target_include_directories(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../ignlog)

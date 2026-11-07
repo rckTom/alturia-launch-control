@@ -10,6 +10,7 @@
 
 #include "chime.h"
 #include "controller.h"
+#include "ignlog.h"
 #include "inputs.h"
 #include "power.h"
 
@@ -1259,6 +1260,107 @@ static void messages_handle(const struct ctrl_req *req)
 	}
 }
 
+/* The ignition log's records, newest first: the one at list row @p row. */
+static bool ignlog_entry(int row, struct ignlog_entry *e, int *count)
+{
+	struct ignlog_store_view iv;
+
+	if (!ignlog_index(v.ignlog.sat, &iv)) {
+		*count = 0;
+		return false;
+	}
+	*count = iv.count;
+	if (row < 0 || row >= iv.count) {
+		return false;
+	}
+	*e = iv.e[iv.count - 1 - row];
+	return true;
+}
+
+static void ignlog_show(int row)
+{
+	struct ignlog_entry e;
+	size_t len;
+	int count;
+
+	if (!ignlog_entry(row, &e, &count)) {
+		return;
+	}
+	v.ignlog.cursor = row;
+	v.ignlog.seq = e.seq;
+	v.ignlog.page = IGNLOG_PAGE_CHART;
+	if (!ignlog_record(v.ignlog.sat, e.seq, &len) &&
+	    ignlog_get_record(v.ignlog.sat, e.seq)) {
+		message(MSG_WARN, "Satellite %c is not connected", sat_name(v.ignlog.sat));
+	}
+}
+
+/* Ignition log pages, see struct ignlog_view */
+static void ignlog_handle(const struct ctrl_req *req)
+{
+	struct ignlog_view *il = &v.ignlog;
+	struct ignlog_entry e;
+	int count;
+
+	switch (req->type) {
+	case CTRL_REQ_CURSOR:
+		if (il->page == IGNLOG_PAGE_SATS) {
+			il->sat = CLAMP(il->sat + req->arg, 0, NUM_SATS - 1);
+		} else {
+			(void)ignlog_entry(0, &e, &count);
+			if (il->page == IGNLOG_PAGE_LIST) {
+				il->cursor = CLAMP(il->cursor + req->arg, 0, MAX(count - 1, 0));
+			} else {
+				/* Down: the next older record */
+				ignlog_show(CLAMP(il->cursor + req->arg, 0, MAX(count - 1, 0)));
+			}
+		}
+		break;
+	case CTRL_REQ_SELECT:
+		if (il->page == IGNLOG_PAGE_SATS) {
+			if (ignlog_get_index(il->sat)) {
+				message(MSG_WARN, "Satellite %c is not connected", sat_name(il->sat));
+				break;
+			}
+			il->page = IGNLOG_PAGE_LIST;
+			il->cursor = 0;
+		} else if (il->page == IGNLOG_PAGE_LIST) {
+			ignlog_show(il->cursor);
+		}
+		break;
+	case CTRL_REQ_ADJUST:
+		if (il->page == IGNLOG_PAGE_CHART) {
+			il->zoom = !il->zoom;
+		}
+		break;
+	case CTRL_REQ_EDIT:
+		/* Hold OK: download again */
+		if (il->page == IGNLOG_PAGE_LIST && ignlog_get_index(il->sat) == 0) {
+			message(MSG_INFO, "Asking satellite %c again", sat_name(il->sat));
+		} else if (il->page == IGNLOG_PAGE_CHART &&
+			   ignlog_get_record(il->sat, il->seq) == 0) {
+			message(MSG_INFO, "Downloading record #%u again", il->seq);
+		}
+		break;
+	case CTRL_REQ_BACK:
+		if (il->page == IGNLOG_PAGE_CHART) {
+			il->page = IGNLOG_PAGE_LIST;
+		} else if (il->page == IGNLOG_PAGE_LIST) {
+			ignlog_cancel();
+			il->page = IGNLOG_PAGE_SATS;
+		} else {
+			ignlog_cancel();
+			v.diag = DIAG_NONE;
+		}
+		break;
+	case CTRL_REQ_BACK_LONG:
+		break;
+	default:
+		message(MSG_WARN, "Leave the menu first (BACK)");
+		break;
+	}
+}
+
 /* Diagnostics menu */
 static void diag_menu_handle(const struct ctrl_req *req)
 {
@@ -1268,6 +1370,15 @@ static void diag_menu_handle(const struct ctrl_req *req)
 		break;
 	case CTRL_REQ_SELECT:
 		v.diag = v.diag_menu.cursor;
+		if (v.diag == DIAG_IGNLOG) {
+			v.ignlog = (struct ignlog_view){ .page = IGNLOG_PAGE_SATS };
+			/* Start on the first connected satellite */
+			for (int sat = NUM_SATS - 1; sat >= 0; sat--) {
+				if (v.sat[sat].joined) {
+					v.ignlog.sat = sat;
+				}
+			}
+		}
 		break;
 	case CTRL_REQ_BACK:
 		v.diag_menu.active = false;
@@ -1307,6 +1418,10 @@ static void handle_request(const struct ctrl_req *req)
 	 * The button test takes every button, so only holding BACK leaves it.
 	 * The game reads the D-pad itself; every other request is dropped.
 	 */
+	if (v.diag == DIAG_IGNLOG) {
+		ignlog_handle(req);
+		return;
+	}
 	if (v.diag != DIAG_NONE) {
 		if (req->type == (v.diag == DIAG_BUTTONS ? CTRL_REQ_BACK_LONG : CTRL_REQ_BACK)) {
 			v.diag = DIAG_NONE;
@@ -1680,6 +1795,9 @@ void ctrl_tick(void)
 	if (now >= next_tx) {
 		send_poll();
 	}
+
+	/* Ignition log downloads use the gaps, never while a command is due. */
+	ignlog_tick(now, v.state == CTRL_SAFE && !retrying(now));
 }
 
 const struct ctrl_view *ctrl_view(void)

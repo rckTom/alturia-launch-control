@@ -6,6 +6,7 @@
 #include <stdbool.h>
 
 #include "dfu_guard.h"
+#include "ignlog.h"
 #include "radio.h"
 #include "sat_link.h"
 #include "satellite.h"
@@ -96,6 +97,12 @@ int main(void)
 		chime_error();
 		dfu_image_bad();
 		return ret;
+	}
+
+	ret = ignlog_init();
+	if (ret) {
+		/* Not fatal: the log is for diagnostics only. */
+		LOG_ERR("ignition log init: %d", ret);
 	}
 
 	ret = pair_ui_init();

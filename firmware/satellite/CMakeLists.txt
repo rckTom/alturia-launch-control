@@ -17,6 +17,7 @@ target_sources(app PRIVATE
 	src/shell_cmds.c
 	src/arm.c
 	src/fault.c
+	src/ignlog.c
 )
 
 # The satellite's end of the secure LoRa link, shared with the bench.
@@ -27,6 +28,9 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../common/link/link_sec.cmake)
 # Command and status payloads, shared with the controller.
 target_include_directories(app PRIVATE ../common/wire)
 target_sources(app PRIVATE ../common/wire/sat_wire.c)
+
+# Ignition log records, and their mcumgr group, shared with the controller.
+include(${CMAKE_CURRENT_SOURCE_DIR}/../common/ignlog/ignlog.cmake)
 
 # Buzzer tunes, shared with the controller.
 target_include_directories(app PRIVATE ../common/chime)

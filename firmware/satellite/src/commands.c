@@ -28,6 +28,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
+#include "ignlog.h"
 #include "lsec.h"
 #include "sat_link.h"
 #include "sat_wire.h"
@@ -327,13 +328,67 @@ static size_t build_status(bool full, uint8_t *out)
 	return wire_encode_status(&st, full, out);
 }
 
+/*
+ * A log poll (sat_wire.h, "Ignition log download"): the index, or one
+ * chunk of a record; the index too for a record that is gone.
+ */
+static void log_reply(const struct wire_log_req *req)
+{
+	static uint8_t buf[MAX(WIRE_LOG_CHUNK_LEN, WIRE_LOG_INDEX_LEN(WIRE_LOG_INDEX_MAX))];
+	uint8_t data[WIRE_LOG_CHUNK_MAX];
+	size_t len = 0;
+	int ret;
+
+	if (req->op == WIRE_LOG_OP_CHUNK) {
+		size_t total;
+
+		ret = ignlog_read(req->seq, req->off, data, sizeof(data), &total);
+		if (ret >= 0) {
+			struct wire_log_chunk c = {
+				.seq = req->seq,
+				.off = req->off,
+				.total = total,
+				.len = ret,
+				.data = data,
+			};
+
+			len = wire_encode_log_chunk(&c, buf);
+		}
+	}
+	if (len == 0) {
+		struct wire_log_index ix;
+		struct ignlog_store_view v;
+
+		ignlog_view(&v);
+		ix.store_id = v.store_id;
+		ix.boots = v.boots;
+		ix.now_ms = v.now_ms;
+		ix.scale_na = v.scale_na;
+		ix.count = MIN(v.count, WIRE_LOG_INDEX_MAX);
+		memcpy(ix.e, v.e + (v.count - ix.count), ix.count * sizeof(ix.e[0]));
+		len = wire_encode_log_index(&ix, buf);
+	}
+
+	ret = sat_link_reply(buf, len);
+	if (ret) {
+		LOG_WRN("log reply: %d", ret);
+	}
+}
+
 void commands_on_poll(const struct lsec_event *ev)
 {
 	uint8_t buf[WIRE_STATUS_LEN];
+	struct wire_log_req log_req;
 	struct link_cmd cmd;
 	bool full = false;
 	size_t len;
 	int ret;
+
+	/* No command in a log poll; only the reply differs. */
+	if (wire_decode_log_poll(ev->data, ev->len, &log_req) == 0) {
+		log_reply(&log_req);
+		return;
+	}
 
 	k_mutex_lock(&lock, K_FOREVER);
 	if (wire_decode_poll(ev->data, ev->len, ev->rank, ev->count, &cmd, &full) == 0) {

@@ -4,4 +4,30 @@ mainmenu "Launch satellite"
 
 rsource "../common/link/Kconfig"
 
+menu "Ignition log"
+
+config SAT_IGNLOG_RECORDS
+	int "Channel pulses kept"
+	default 8
+	range 1 8
+	help
+	  How many records the ignition log keeps in RAM, one per channel
+	  and pulse; the oldest goes first. Each one takes
+	  32 + 2 * SAT_IGNLOG_MAX_SAMPLES bytes.
+
+config SAT_IGNLOG_MAX_SAMPLES
+	int "Samples per record"
+	default 1024
+	range 16 8192
+
+config SAT_IGNLOG_PERIOD_US
+	int "Sample period (us)"
+	default 1000
+	range 200 10000
+	help
+	  The MCP3208 at 1 MHz takes about 25 us per conversion; with six
+	  channels and V_PYRO, 1 ms leaves the CPU most of its time.
+
+endmenu
+
 source "Kconfig.zephyr"

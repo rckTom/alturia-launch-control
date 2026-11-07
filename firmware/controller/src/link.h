@@ -29,6 +29,12 @@
 int link_poll(const struct link_cmd cmds[NUM_SATS], bool full);
 
 /*
+ * A log poll to satellite @p sat alone (sat_wire.h, ignition log). Its
+ * answer goes to ignlog_rx(). Errors as link_poll().
+ */
+int link_log_poll(int sat, const struct wire_log_req *req);
+
+/*
  * Copy the most recently received status of one satellite. Returns the
  * uptime in ms at which it was received, or -1 if none was received yet.
  */

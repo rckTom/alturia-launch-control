@@ -113,6 +113,7 @@ void ui_menus_create(lv_obj_t *scr)
 	static const char *const diag_names[DIAG_COUNT] = {
 		[DIAG_BUTTONS] = "Buttons",
 		[DIAG_BATTERY] = "Battery",
+		[DIAG_IGNLOG] = "Ignition log",
 		[DIAG_GAME] = "Stacker",
 	};
 
@@ -153,6 +154,7 @@ lv_obj_t *ui_diag_menu_refresh(const struct ctrl_view *v)
 	} else {
 		ui_set_text(diag_menu.detail[DIAG_BATTERY], "no reading");
 	}
+	ui_set_text(diag_menu.detail[DIAG_IGNLOG], "igniter current");
 	ui_set_text(diag_menu.detail[DIAG_GAME], "a game");
 	return refresh_menu(&diag_menu, &v->diag_menu);
 }

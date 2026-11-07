@@ -51,6 +51,10 @@ lv_obj_t *ui_pair_refresh(const struct ctrl_view *v);
 void ui_diag_create(lv_obj_t *scr);
 lv_obj_t *ui_diag_refresh(const struct ctrl_view *v);
 
+/* ignlog.c: the ignition log pages */
+void ui_ignlog_create(lv_obj_t *scr);
+lv_obj_t *ui_ignlog_refresh(const struct ctrl_view *v);
+
 /* game.c: also runs the game, see game.h */
 void ui_game_create(lv_obj_t *scr);
 lv_obj_t *ui_game_refresh(int64_t now);
