@@ -445,13 +445,17 @@ export function cancelUpload() {
   cancel?.abort()
 }
 
-/** Whether the published image is newer than, or just different from, the active one. */
-export function publishedStatus(): 'none' | 'current' | 'newer' | 'different' {
+/**
+ * The published image against the active one. Only a newer one is offered
+ * as the update; an older or same-version one has to be chosen as a file.
+ */
+export function publishedStatus(): 'none' | 'current' | 'newer' | 'older' | 'different' {
   const p = published()
   const a = activeSlot()
   if (!p || !a) return 'none'
   if (p.hash === hex(a.hash)) return 'current'
-  return compareVersions(p.version, a.version) > 0 ? 'newer' : 'different'
+  const d = compareVersions(p.version, a.version)
+  return d > 0 ? 'newer' : d < 0 ? 'older' : 'different'
 }
 
 export function init() {

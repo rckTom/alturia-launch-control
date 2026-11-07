@@ -50,6 +50,8 @@ const statusWord = computed(() => {
       return 'installed'
     case 'newer':
       return 'newer'
+    case 'older':
+      return 'older'
     case 'different':
       return 'differs'
     default:
@@ -57,7 +59,8 @@ const statusWord = computed(() => {
   }
 })
 
-const canUpdate = computed(() => ready.value && !!pub.value && status.value !== 'current')
+// Only forward: an older image would undo fixes, as the satellite found out.
+const canUpdate = computed(() => ready.value && status.value === 'newer')
 const localFits = computed(
   () => !!state.local && (!state.local.image.board || state.local.image.board === boardName()),
 )

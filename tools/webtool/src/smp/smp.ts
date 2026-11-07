@@ -247,9 +247,10 @@ export class SmpClient {
   }
 
   /**
-   * Upload an image to the secondary slot. The first chunk erases the
-   * slot, which takes a few seconds on the satellite. A chunk without an
-   * answer is sent again from the offset the device last reported.
+   * Upload an image to the secondary slot. A chunk without an answer is
+   * sent again from the offset the device last reported; after two misses
+   * in a row the chunks get smaller (down to 64 bytes), for firmware with
+   * fewer console frame buffers than this tool expects.
    */
   async upload(
     data: Uint8Array,
@@ -258,6 +259,7 @@ export class SmpClient {
     onProgress: (sent: number) => void,
     signal?: AbortSignal,
   ): Promise<void> {
+    const MIN_CHUNK = 64
     let off = 0
     let retries = 0
     let restarted = false
@@ -275,6 +277,10 @@ export class SmpClient {
       } catch (e) {
         if (e instanceof SmpTimeout && retries < 5) {
           retries++
+          if (retries >= 2 && chunk > MIN_CHUNK) {
+            chunk = Math.max(MIN_CHUNK, chunk >> 1)
+            retries = 0
+          }
           continue
         }
         // A flash write or erase error ends the device's upload session.

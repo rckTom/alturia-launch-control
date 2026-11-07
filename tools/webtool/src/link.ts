@@ -21,6 +21,7 @@ export class Link {
   private writer?: WritableStreamDefaultWriter<Uint8Array>
   private demux: StreamDemux
   private closing = false
+  private loop: Promise<void> = Promise.resolve()
   private writes: Promise<void> = Promise.resolve()
 
   private constructor(
@@ -50,7 +51,7 @@ export class Link {
     }
     const link = new Link(port, ev)
     link.writer = port.writable!.getWriter()
-    void link.readLoop()
+    link.loop = link.readLoop()
     return link
   }
 
@@ -114,9 +115,13 @@ export class Link {
     } catch {
       /* nothing to cancel */
     }
+    // The port only closes once the read loop has let go of the stream;
+    // closing it any earlier fails and leaves the port open.
+    await this.loop
     await this.release()
     this.ev.closed('closed')
   }
+
 }
 
 export const serialSupported = typeof navigator !== 'undefined' && 'serial' in navigator
