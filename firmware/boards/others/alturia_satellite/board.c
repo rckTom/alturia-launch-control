@@ -8,10 +8,13 @@
  *
  * The board also enters the ROM USB DFU bootloader without BOOT0: the `dfu`
  * shell command, or opening the CDC ACM port at 1200 baud and closing it
- * (`stty -F /dev/ttyACM0 1200`), marks a request in RAM that survives a
- * reset and reboots. The early init hook then finds the mark and jumps to
- * system memory while the chip still has its reset clocks and no driver has
- * touched a peripheral, which is the state the bootloader expects.
+ * (`stty -F /dev/ttyACM0 1200`), marks a request in a TAMP backup register
+ * and reboots. The early init hook then finds the mark and jumps to system
+ * memory while the chip still has its reset clocks and no driver has
+ * touched a peripheral, which is the state the bootloader expects. The
+ * mark is in a backup register rather than RAM because MCUboot runs first
+ * and links its own RAM differently; this file is part of its build too,
+ * so it is MCUboot's hook that takes the jump.
  */
 
 #include <zephyr/init.h>
@@ -25,22 +28,37 @@
 #include <cmsis_core.h>
 #include <stm32_ll_bus.h>
 #include <stm32_ll_crs.h>
+#include <stm32_ll_pwr.h>
 #include <stm32_ll_system.h>
 
 #define SYSMEM_BASE 0x1FFF0000UL
 
-/* Two words, so RAM noise at power-on cannot pass for a request. */
+/* Two registers, so a stale or random value cannot pass for a request. */
 #define DFU_MAGIC 0x44465521UL
 
-static __noinit uint32_t dfu_request[2];
+/* TAMP backup registers keep their value through a reset. Reading needs
+ * the RTC APB clock, writing also the backup domain write enable.
+ */
+static void dfu_request_write(uint32_t a, uint32_t b)
+{
+	LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_PWR);
+	LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_RTCAPB);
+	LL_PWR_EnableBkUpAccess();
+	TAMP->BKP0R = a;
+	TAMP->BKP1R = b;
+	LL_PWR_DisableBkUpAccess();
+}
 
 void board_early_init_hook(void)
 {
-	if (dfu_request[0] != DFU_MAGIC || dfu_request[1] != ~DFU_MAGIC) {
+	LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_RTCAPB);
+	if (TAMP->BKP0R != DFU_MAGIC || TAMP->BKP1R != ~DFU_MAGIC) {
+		LL_APB1_GRP1_DisableClock(LL_APB1_GRP1_PERIPH_RTCAPB);
 		return;
 	}
-	dfu_request[0] = 0;
-	dfu_request[1] = 0;
+	dfu_request_write(0, 0);
+	LL_APB1_GRP1_DisableClock(LL_APB1_GRP1_PERIPH_RTCAPB);
+	LL_APB1_GRP1_DisableClock(LL_APB1_GRP1_PERIPH_PWR);
 
 	/* arch_kernel_init() has already turned the MPU on. */
 	MPU->CTRL = 0;
@@ -72,10 +90,9 @@ void board_early_init_hook(void)
 	CODE_UNREACHABLE;
 }
 
-static void board_dfu_reboot(void)
+static inline void board_dfu_reboot(void)
 {
-	dfu_request[0] = DFU_MAGIC;
-	dfu_request[1] = ~DFU_MAGIC;
+	dfu_request_write(DFU_MAGIC, ~DFU_MAGIC);
 	sys_reboot(SYS_REBOOT_COLD);
 }
 

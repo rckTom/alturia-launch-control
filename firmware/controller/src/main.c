@@ -13,6 +13,7 @@
 
 #include "chime.h"
 #include "controller.h"
+#include "dfu_guard.h"
 #include "link.h"
 #include "pads.h"
 #include "ui.h"
@@ -20,6 +21,21 @@
 LOG_MODULE_REGISTER(app, LOG_LEVEL_INF);
 
 #define CTRL_PERIOD_MS 50
+
+/* After this long with the UI running, a newly updated image is kept. */
+#define DFU_CONFIRM_MS 10000
+
+/* mcumgr uploads and resets (common/mgmt/dfu_guard.c): only while SAFE. */
+bool app_dfu_allowed(void)
+{
+	return ctrl_view()->state == CTRL_SAFE;
+}
+
+static void dfu_confirm_cb(lv_timer_t *timer)
+{
+	ARG_UNUSED(timer);
+	dfu_image_ok();
+}
 
 static void ctrl_timer_cb(lv_timer_t *timer)
 {
@@ -35,6 +51,7 @@ int main(void)
 	if (!device_is_ready(display)) {
 		LOG_ERR("display not ready");
 		chime_error();
+		dfu_image_bad();
 		return 0;
 	}
 
@@ -48,10 +65,12 @@ int main(void)
 	if (link_init()) {
 		LOG_ERR("secure link failed to start");
 		chime_error();
+		dfu_image_bad();
 	} else {
 		chime_startup();
 	}
 	lv_timer_create(ctrl_timer_cb, CTRL_PERIOD_MS, NULL);
+	lv_timer_set_repeat_count(lv_timer_create(dfu_confirm_cb, DFU_CONFIRM_MS, NULL), 1);
 
 	LOG_INF("launch controller UI running");
 

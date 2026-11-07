@@ -1,0 +1,12 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ *
+ * MCUboot has no USB stack, so its log goes to the UART header J2
+ * (115200 8N1) instead of the CDC ACM port the app uses.
+ */
+
+/ {
+	chosen {
+		zephyr,console = &lpuart1;
+	};
+};

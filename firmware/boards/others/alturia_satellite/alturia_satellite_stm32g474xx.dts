@@ -335,14 +335,34 @@ zephyr_udc0: &usb {
 		#size-cells = <1>;
 		ranges;
 
-		/* No bootloader: the image is flashed over SWD or ROM DFU. */
-		slot0_partition: partition@0 {
+		/* MCUboot (sysbuild, swap using offset) takes some 32 KB of its
+		 * 40. A build without sysbuild has no bootloader and links at 0
+		 * as before. Everything is 4 KB aligned, so the layout holds
+		 * whether DBANK is set (2 KB pages, the factory default) or not
+		 * (4 KB pages).
+		 */
+		boot_partition: partition@0 {
 			compatible = "zephyr,mapped-partition";
-			label = "image-0";
-			reg = <0x00000000 DT_SIZE_K(504)>;
+			label = "mcuboot";
+			reg = <0x00000000 DT_SIZE_K(40)>;
 		};
 
-		/* Pairing keys and settings (ZMS). */
+		slot0_partition: partition@a000 {
+			compatible = "zephyr,mapped-partition";
+			label = "image-0";
+			reg = <0x0000a000 DT_SIZE_K(232)>;
+		};
+
+		/* Where mcumgr puts an uploaded image for MCUboot to swap in. */
+		slot1_partition: partition@44000 {
+			compatible = "zephyr,mapped-partition";
+			label = "image-1";
+			reg = <0x00044000 DT_SIZE_K(232)>;
+		};
+
+		/* Pairing keys and settings (ZMS). Same place as before MCUboot,
+		 * so a re-flash that doesn't mass-erase keeps the pairings.
+		 */
 		storage_partition: partition@7e000 {
 			compatible = "zephyr,mapped-partition";
 			label = "storage";

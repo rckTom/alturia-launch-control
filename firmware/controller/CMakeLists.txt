@@ -66,3 +66,6 @@ target_sources_ifdef(CONFIG_PM app PRIVATE src/sleep.c)
 if(LSEC_RADIO_SIM)
 	target_sources(app PRIVATE src/sim_display.c src/sim_panel.c)
 endif()
+
+# Firmware updates: refuse while armed, confirm a new image once up.
+include(${CMAKE_CURRENT_SOURCE_DIR}/../common/mgmt/dfu_guard.cmake)

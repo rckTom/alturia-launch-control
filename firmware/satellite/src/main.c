@@ -5,6 +5,7 @@
 #include <zephyr/settings/settings.h>
 #include <stdbool.h>
 
+#include "dfu_guard.h"
 #include "radio.h"
 #include "sat_link.h"
 #include "satellite.h"
@@ -18,6 +19,15 @@ static void disarm_all(const char *why)
 {
 	commands_disarm(why);
 }
+
+/* mcumgr uploads and resets (common/mgmt/dfu_guard.c): only while SAFE. */
+bool app_dfu_allowed(void)
+{
+	return channels_all_safe() && !arm_relay_on();
+}
+
+/* After this long in the main loop, a newly updated image is kept. */
+#define DFU_CONFIRM_MS 5000
 
 /* Runs on the link thread. */
 static void on_link_event(const struct lsec_event *ev)
@@ -68,6 +78,7 @@ int main(void)
 	if (ret) {
 		LOG_ERR("settings init: %d", ret);
 		chime_error();
+		dfu_image_bad();
 		return ret;
 	}
 
@@ -75,6 +86,7 @@ int main(void)
 	if (ret) {
 		LOG_ERR("arm path init: %d", ret);
 		chime_error();
+		dfu_image_bad();
 		return ret;
 	}
 
@@ -82,6 +94,7 @@ int main(void)
 	if (ret) {
 		LOG_ERR("channels init: %d", ret);
 		chime_error();
+		dfu_image_bad();
 		return ret;
 	}
 
@@ -89,6 +102,7 @@ int main(void)
 	if (ret) {
 		LOG_ERR("pairing UI init: %d", ret);
 		chime_error();
+		dfu_image_bad();
 		return ret;
 	}
 
@@ -101,6 +115,7 @@ int main(void)
 	if (ret) {
 		LOG_ERR("radio init: %d", ret);
 		chime_error();
+		dfu_image_bad();
 		return ret;
 	}
 
@@ -108,14 +123,22 @@ int main(void)
 	if (ret) {
 		LOG_ERR("link init: %d", ret);
 		chime_error();
+		dfu_image_bad();
 		return ret;
 	}
 
 	LOG_INF("satellite up, %d channels", SAT_CHANNELS);
 	chime_startup();
 
+	bool image_ok = false;
+
 	while (true) {
 		k_sleep(K_MSEC(100));
+
+		if (!image_ok && k_uptime_get() > DFU_CONFIRM_MS) {
+			dfu_image_ok();
+			image_ok = true;
+		}
 
 		commands_measure();
 

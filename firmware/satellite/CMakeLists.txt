@@ -36,3 +36,6 @@ target_sources(app PRIVATE ../common/chime/chime.c)
 if(LSEC_RADIO_SIM)
 	target_sources(app PRIVATE src/sim_io.c)
 endif()
+
+# Firmware updates: refuse while armed, confirm a new image once up.
+include(${CMAKE_CURRENT_SOURCE_DIR}/../common/mgmt/dfu_guard.cmake)

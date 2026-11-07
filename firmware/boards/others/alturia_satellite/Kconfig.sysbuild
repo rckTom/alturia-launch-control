@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-3.0-only
+
+# Built with sysbuild, the board gets MCUboot in front of the app so that
+# the browser tool (tools/webtool) can update it over USB through mcumgr.
+# Images are signed with ECDSA P-256; set SB_CONFIG_BOOT_SIGNATURE_KEY_FILE
+# for anything but the MCUboot development key.
+
+choice BOOTLOADER
+	default BOOTLOADER_MCUBOOT
+endchoice
+
+choice BOOT_SIGNATURE_TYPE
+	default BOOT_SIGNATURE_TYPE_ECDSA_P256
+endchoice
