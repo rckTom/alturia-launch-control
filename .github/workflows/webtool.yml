@@ -33,21 +33,41 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    env:
+      # Everything the setup below creates. Not ws/alturia, that is the checkout.
+      ZEPHYR_CACHE_PATHS: |
+        ws/.west
+        ws/.venv
+        ws/zephyr
+        ws/modules
+        ws/bootloader
+        ~/zephyr-sdk-*
     steps:
       - uses: actions/checkout@v4
         with:
           path: ws/alturia
 
       - uses: actions/setup-python@v5
+        id: python
         with:
           python-version: '3.12'
 
+      # west.yml pins Zephyr, and with it the requirements and the SDK version;
+      # this file says which toolchains and blobs are set up. The venv links to
+      # the runner's Python, so a new patch release needs a new one.
+      - name: Restore Zephyr workspace
+        id: zephyr-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.ZEPHYR_CACHE_PATHS }}
+          key: zephyr-${{ runner.os }}-py${{ steps.python.outputs.python-version }}-${{ hashFiles('ws/alturia/west.yml', 'ws/alturia/.github/workflows/webtool.yml') }}
+
       - name: Zephyr workspace
+        if: steps.zephyr-cache.outputs.cache-hit != 'true'
         working-directory: ws
         run: |
           # west packages pip --install refuses to run outside a venv
           python -m venv .venv
-          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
           . .venv/bin/activate
           pip install west
           west init -l alturia
@@ -55,6 +75,18 @@ jobs:
           west packages pip --install
           west blobs fetch hal_espressif
           west sdk install -t arm-zephyr-eabi xtensa-espressif_esp32s3_zephyr-elf
+
+      # Saved here rather than at the end of the job, so that a failing firmware
+      # build or a cancelled run does not throw the setup away.
+      - name: Save Zephyr workspace
+        if: steps.zephyr-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.ZEPHYR_CACHE_PATHS }}
+          key: ${{ steps.zephyr-cache.outputs.cache-primary-key }}
+
+      - name: Use the workspace's Python
+        run: echo "$PWD/ws/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Firmware
         working-directory: ws/alturia/firmware
