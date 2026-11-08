@@ -45,6 +45,10 @@ jobs:
       - name: Zephyr workspace
         working-directory: ws
         run: |
+          # west packages pip --install refuses to run outside a venv
+          python -m venv .venv
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          . .venv/bin/activate
           pip install west
           west init -l alturia
           west update --narrow -o=--depth=1
