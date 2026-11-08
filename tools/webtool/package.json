@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
     "typecheck": "vue-tsc -b",
-    "test": "esbuild src/smp/smp.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/smp.test.mjs && node --test node_modules/.cache/smp.test.mjs && esbuild src/smp/ignlog.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/ignlog.test.mjs && node --test node_modules/.cache/ignlog.test.mjs",
+    "test": "esbuild src/smp/smp.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/smp.test.mjs && node node_modules/.cache/smp.test.mjs && esbuild src/smp/ignlog.test.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/ignlog.test.mjs && node node_modules/.cache/ignlog.test.mjs",
     "firmware": "esbuild scripts/firmware.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/firmware.mjs && node node_modules/.cache/firmware.mjs",
     "simtest": "esbuild scripts/simtest.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/simtest.mjs && node node_modules/.cache/simtest.mjs"
   },
